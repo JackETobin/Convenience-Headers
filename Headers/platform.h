@@ -3,11 +3,13 @@
 #ifndef PLATFORM_H
 #define PLATFORM_H
 
-#if defined(MEM_TYPES_H)
-    #include "mem_types.h"
-#else
+// #if defined(MEM_TYPES_H)
+//     #include "mem_types.h"
+// #else
+// typedef unsigned long long uint64;
+// #endif // MEM_TYPES_H
+
 typedef unsigned long long uint64;
-#endif // MEM_TYPES_H
 
 #if defined(WIN32) || defined(_WIN32) || defined(__WIN32__)
     #if defined(_WIN64)

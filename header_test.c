@@ -6,30 +6,17 @@
 #define USE_PLATFORM
 #define USE_MEM_DEBUG
 #define USE_MEM_ALLOC
+#define USE_MEM_POOL
 
 #define DEBUG_LOG_RESULT
-// #define DEBUG_LOG_VERBOSE
-
-// #include "Headers/mem_defines.h"
-// #include "Headers/mem_types.h"
-
-// #include "Headers\mem_defines.h"
-// #include "Headers\mem_types.h"
-
-// #include "Headers\platform.h"
-
-// #include "Headers\mem_alloc.h"
-#include "Headers\mem_pool.h"
-
-// #undef MEM_ALLOC_H
-
-// #include "F_Array/f_array.h"
+#define DEBUG_LOG_VERBOSE
+#include "Headers\mem_headers.h"
 
 int 
 main(void)
 {
 #if defined(MEM_ALLOC_H)
-    Debug_Report();
+    Mem_Debug_Report();
     
     void* a1 = null;
     Mem_Alloc(4, "Alloc 1", (p_mem)&a1);
@@ -49,7 +36,7 @@ main(void)
     uint64 a4Size = Mem_BlockSize(a4);
     printf("%llu\n", a4Size);
 
-    Debug_Report();
+    Mem_Debug_Report();
 
     Mem_Realloc(14000, (p_mem)&a2);
 
@@ -58,7 +45,7 @@ main(void)
     void* a5 = null;
     Mem_Alloc(1200, "Alloc 5", (p_mem)&a5);
 
-    Debug_Report();
+    Mem_Debug_Report();
 
     char tag[MEM_TAG_SIZE];
     Mem_BlockTag(a1, tag);
@@ -90,11 +77,11 @@ main(void)
 
     Mem_ClearFree();
 
-    Debug_Report();
+    Mem_Debug_Report();
 
     Mem_Kill();
 
-    Debug_Report();
+    Mem_Debug_Report();
 
 #endif // MEM_ALLOC_H
 
@@ -159,11 +146,11 @@ main(void)
     Pool_Release(resHnd4);
     Pool_Release(resHnd1);
 
-    Debug_Report();
+    Mem_Debug_Report();
 
     Pool_Kill();
 
-    Debug_Report();
+    Mem_Debug_Report();
     
     return 0;
 }
