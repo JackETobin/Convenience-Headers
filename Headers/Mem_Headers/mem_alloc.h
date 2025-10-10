@@ -77,12 +77,11 @@ typedef const void**        p_mem;
 
 typedef struct Mem_Block_St
 {
-    // uint16                  index;
-    uint8                   status;
     uint32                  alignment;
     struct Mem_Block_St*    pPrev;
     struct Mem_Block_St*    pNext;
     uint64*                 checkVal;
+    uint8                   status;
     char                    tag;
 } mem_block;
 
@@ -142,10 +141,6 @@ uint64
 _Mem_BlockSize(
     const void*     mem_In);
 
-// uint8
-// Mem_Index(
-//     void*           mem_In);
-
 internal result 
 l_mem_copy( 
     const void*     src_In, 
@@ -154,7 +149,7 @@ l_mem_copy(
 {
     uint8* src = (uint8*)src_In; uint8* dst = (uint8*)dst_In;
     uint8* lim = (uint8*)(src_In + range_In);
-    for(; src <= lim; dst++, src++)
+    for(; src < lim; dst++, src++)
         *dst = *src;
     return MEM_SUCCESS;
 };
@@ -180,26 +175,25 @@ l_mem_alloc(
     const void**    mem_Out)
 {
     size_In += alignment_In - (size_In % alignment_In);
+    size_In += SIZE_META + sizeof(uint64);
     mem_block* block = null;
-    Malloc(size_In + SIZE_META + sizeof(uint64), block);
+    Malloc(size_In, block);
     if(!block) 
         return MEM_NOALLOC;
 
     void* mem = (void*)block + SIZE_META;
-    _Mem_Zero(block, size_In + SIZE_META);
+    size_In -= (SIZE_META + sizeof(uint64));
     mem_block* prev = l_AllocHead;
-    // uint8 index = 0;
     if(prev)
     {
         while(prev->pNext)
             prev = prev->pNext;
         prev->pNext = block;
-        // index = prev->index + 1;
     } 
     else
         l_AllocHead = block;
 
-    *block = (mem_block){/*index,*/ MEM_STATUS_READY, alignment_In, prev, null, mem + size_In, 0};
+    *block = (mem_block){alignment_In, prev, null, mem + size_In, MEM_STATUS_READY, 0};
     *block->checkVal = MEM_CHECKVAL;
     l_mem_setTag((char*)tag_In, &block->tag);
 
@@ -215,21 +209,26 @@ l_mem_realloc(
 {
     void* memOld = (void*)*mem_InOut;
     mem_block* blockOld = (memOld - SIZE_META);
+    uint64 sizeOld = ((uint8*)blockOld->checkVal - (uint8*)blockOld) + sizeof(uint64);
+
     size_In += blockOld->alignment - (size_In % blockOld->alignment);
+    size_In += SIZE_META + sizeof(uint64);
+    if(size_In <= sizeOld)
+        return MEM_SUCCESS;
+
     mem_block* blockNew = null; 
-    Malloc(size_In + SIZE_META + sizeof(uint64), blockNew);
+    Malloc(size_In, blockNew);
     if(!blockNew) 
         return MEM_NOALLOC;
-    _Mem_Zero(blockNew, SIZE_META + size_In + sizeof(uint64));
 
-    uint64 sizeOld = (void*)blockOld->checkVal - memOld;
-    l_mem_copy(blockOld, blockNew, SIZE_META + ((size_In < sizeOld) ? size_In : sizeOld));
+    l_mem_copy(blockOld, blockNew, ((size_In < sizeOld) ? size_In : sizeOld));
     Free(blockOld);
         
     if(blockNew->pPrev) (blockNew->pPrev)->pNext = blockNew;
     if(blockNew->pNext) (blockNew->pNext)->pPrev = blockNew;
         
     void* memNew = ((void*)blockNew) + SIZE_META;
+    size_In -= (SIZE_META + sizeof(uint64));
     blockNew->checkVal = memNew + size_In;
     *blockNew->checkVal = MEM_CHECKVAL;
         

@@ -137,19 +137,34 @@ l_mem_alloc_printInfo(void)
 internal void
 l_mem_pool_printInfo(void)
 {
-    // pool* target = _Pool_RetrieveHead();
-    // if(target)
-    // {
-//         pool* target = l_PoolHead;
-//         while(target)
-//         {
-//             target->hnd;
-//             uint64 spaceTotal = (target->oEnd - 1) * POOL_SECTION_SIZE;
-//             uint64 spaceRemaining = (target->oEnd - target->oData) * POOL_SECTION_SIZE;
-//             target = target->pPrev;
-//         }
-    // }
-    // return;
+    pool* target = l_PoolHead;
+    if(target)
+    {
+        while(target)
+        {
+            #if defined(USE_MEM_ALLOC) || defined(USE_MEM_ALL)
+                char tag[MEM_TAG_SIZE]; 
+                _Mem_BlockTag(target, tag);
+            #else
+                char* tag = "Untagged";
+            #endif // USE_MEM_ALLOC
+            uint64 spaceTotal = (target->oEnd - 1) * POOL_SECTION_SIZE;
+            uint64 spaceRemaining = (target->oEnd - target->oData) * POOL_SECTION_SIZE;
+            uint32 resCount = target->resCount;
+            uint32 voidCount = target->voids[1];
+            Print("%s%u\n%s%s\n%s%llu\n%s%llu\n%s%u\n%s%u\n\n",
+                "Pool: ", target->hnd,
+                "Tag: ", tag,
+                "Size Total: ", spaceTotal,
+                "Size Remaining: ", spaceRemaining,
+                "Reservation Count: ", target->resCount,
+                "VoidCount: ", target->voids[1]);
+            target = target->pPrev;
+        }
+        return;
+    }
+    Print("\nNo memory pools present.\n");
+    return;
 };
 
 #endif // USE_MEM_POOL
@@ -157,21 +172,19 @@ l_mem_pool_printInfo(void)
 void
 _Debug_Report(void)
 {
-Print("\n------------------------------------------\n\
----------------DEBUG REPORT---------------\n\
-------------------------------------------\n");
+Print("\n///////////////DEBUG REPORT///////////////\n\n");
 #if defined(PLATFORM_H) || defined(USE_PLATFORM) || defined(USE_MEM_ALL)
 
 #endif // USE_PLATFORM
 #if defined(USE_MEM_ALLOC) || defined(USE_MEM_ALL)
-    Print("\n-------------MEM ALLOC BEGIN--------------\n");
+    Print("\n/////////////MEM ALLOC BEGIN//////////////\n");
     l_mem_alloc_printInfo();
-    Print("\n--------------MEM ALLOC END---------------\n\n");
+    Print("\n//////////////MEM ALLOC END///////////////\n\n");
 #endif // USE_MEM_ALLOC
 #if defined(USE_MEM_POOL) || defined(USE_MEM_ALL)
-    Print("\n--------------MEM POOL BEGIN--------------\n");
+    Print("\n//////////////MEM POOL BEGIN//////////////\n");
     l_mem_pool_printInfo();
-    Print("\n---------------MEM POOL END---------------\n\n");
+    Print("\n///////////////MEM POOL END///////////////\n\n");
 #endif // USE_MEM_ALLOC
 };
 

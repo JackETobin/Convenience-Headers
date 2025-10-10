@@ -300,6 +300,17 @@ l_pool_obtainRes(
     return POOL_SUCCESS;
 }
 
+internal uint64
+l_pool_setResMeta(uint32* res_In, uint32 status_In, uint32 size_In)
+{
+    uint64 sizeAlign = RES_SIZE_SECTOALIGN(size_In);
+    if(!sizeAlign)
+        return sizeAlign;
+    res_In[0] = res_In[sizeAlign - 1] = status_In;
+    res_In[1] = res_In[sizeAlign - 2] = size_In;
+    return sizeAlign;
+}
+
 internal uint32
 l_pool_reclaim(
     pool*           target_In, 
@@ -325,9 +336,7 @@ l_pool_reclaim(
     else
     {
         voidRes_In[1] -= adjustedSize_In;
-        uint64 oldSizeAlign = RES_SIZE_SECTOALIGN(voidRes_In[1]);
-        voidRes_In[oldSizeAlign - 1] = voidRes_In[0];
-        voidRes_In[oldSizeAlign - 2] = voidRes_In[1];
+        uint64 oldSizeAlign = l_pool_setResMeta(voidRes_In, voidRes_In[0], voidRes_In[1]);
     
         newRes = voidRes_In + oldSizeAlign;
         newSizeAlign = RES_SIZE_SECTOALIGN(adjustedSize_In);
@@ -343,7 +352,7 @@ internal inline void
 l_pool_removeVoidEntry(pool* target_In, uint32 offset_In)
 {
     uint32 index = 2;
-    while(target_In->voids[index] != offset_In)
+    while(target_In->voids[index] != offset_In && index <= target_In->voids[1])
         index++;
     for(; index < target_In->voids[1] + 2; index++)
         target_In->voids[index] = target_In->voids[index + 1];
@@ -358,10 +367,8 @@ l_pool_reserve(
 {
     if(adjustedSize_In > (target_In->oEnd - target_In->oData))
         return (uint32)0;
-    uint64 sizeAlign = RES_SIZE_SECTOALIGN(adjustedSize_In);
-    uint32* data = (void*)target_In + (target_In->oData * POOL_SECTION_SIZE);
-    data[0] = data[sizeAlign - 1] = RES_STATUS_ACTIVE;
-    data[1] = data[sizeAlign - 2] = adjustedSize_In;
+    uint32* res = (void*)target_In + (target_In->oData * POOL_SECTION_SIZE);
+    l_pool_setResMeta(res, RES_STATUS_ACTIVE, adjustedSize_In);
 
     uint32 offset = target_In->oData;
     target_In->oData += adjustedSize_In;
@@ -545,44 +552,63 @@ _Pool_Release(
     if(res[0] == RES_STATUS_FREE)
         return POOL_DBLFREE;
 
+    target->resCount--;
     uint32 size = RES_SIZE_SECTOALIGN(res[1]);
+    uint32 addOffset = offset;
+    uint32 removeOffsets[] = {0, 0, 0};
     // Coalesce front.
     if(res[size] == RES_STATUS_FREE)
     {
         res[1] += res[size + 1];
-        uint32 nextOffset = offset + res[size + 1];
-        l_pool_removeVoidEntry(target, nextOffset);
+        removeOffsets[0] = offset + res[size + 1];
     }
+    // if(res[size] == RES_STATUS_FREE)
+    // {
+    //     res[1] += res[size + 1];
+    //     uint32 nextOffset = offset + res[size + 1];
+    //     l_pool_removeVoidEntry(target, nextOffset);
+    // }
     // Coalesce back.
     if(offset > 0 && res[-1] == RES_STATUS_FREE)
     {
-        offset -= res[-2];
         uint32 prevSize = RES_SIZE_SECTOALIGN(res[-2]);
-        *(res - (prevSize - 1)) += res[1];
-        if(offset + *(res - (prevSize - 1)) >= target->oData)
-        {
-            target->oData = offset;
-            l_pool_removeVoidEntry(target, offset);
-            return POOL_SUCCESS;
-        }
-        offset = 0;
+        res -= prevSize;
+        offset -= res[1];
+        res[1] += res[prevSize + 1];
+        addOffset = 0;
     }
+    // if(offset > 0 && res[-1] == RES_STATUS_FREE)
+    // {
+    //     offset -= res[-2];
+    //     uint32 prevSize = RES_SIZE_SECTOALIGN(res[-2]);
+    //     *(res - (prevSize - 1)) += res[1];
+    //     if(offset + *(res - (prevSize - 1)) >= target->oData)
+    //     {
+    //         target->oData = offset;
+    //         l_pool_removeVoidEntry(target, offset);
+    //         return POOL_SUCCESS;
+    //     }
+    //     offset = 0;
+    // }
     // Pop back target->oData if res is most recent.
     if(offset + res[1] >= target->oData)
     {
+        res[0] = res[1] = 0;
         target->oData = offset;
-        return POOL_SUCCESS;
+        removeOffsets[(removeOffsets[0] > 0)] = offset;
+        addOffset = 0;
     }
-    size = RES_SIZE_SECTOALIGN(res[1]);
-    res[0] = res[size - 1] = RES_STATUS_FREE;
-    res[size - 2] = res[1];
-    if(offset)
+    l_pool_setResMeta(res, RES_STATUS_FREE, res[1]);
+    for(uint32 i = 0; removeOffsets[i]; i++)
+        l_pool_removeVoidEntry(target, removeOffsets[i]);
+    if(addOffset)
     {
         if(target->voids[1] >= target->voids[0])
         {
             void* voids = target->voids;
-            Pool_Realloc(target->voids[0] * 2, voids);
+            Pool_Realloc((target->voids[0] * 2) + 2, voids);
             target->voids = voids;
+            target->voids[0] *= 2;
         }
         target->voids[2 + target->voids[1]] = offset;
         target->voids[1]++;
