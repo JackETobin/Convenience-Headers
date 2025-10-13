@@ -3,13 +3,9 @@
 #ifndef PLATFORM_H
 #define PLATFORM_H
 
-// #if defined(MEM_TYPES_H)
-//     #include "mem_types.h"
-// #else
-// typedef unsigned long long uint64;
-// #endif // MEM_TYPES_H
-
-typedef unsigned long long uint64;
+typedef unsigned char       uint8;
+typedef unsigned long long  uint64;
+typedef uint8               result;
 
 #if defined(WIN32) || defined(_WIN32) || defined(__WIN32__)
     #if defined(_WIN64)
@@ -59,14 +55,15 @@ typedef unsigned long long uint64;
     #error "Error: Incompatible platform."
 #endif // Platform
 
-// TODO: Exception has occurred: W32/0xC0000005 <- This occurs seemingly randomly...
-// NOTE: Unhandled exception at 0x00007FF7F9B77379 in header_test.exe: 0xC0000005: Access violation writing location 0x000000BB875C0070.
-void
+#define PLAT_SUCCESS (result)0X1C // Platform success.
+#define PLAT_NOALLOC (result)0X1D // Platform unable to allocate memory.
+
+result
 Plat_Virtual_Alloc(
     uint64          size_In,
     void*           pStart_In,
-    uint64*         pSizeAct_Out,   // <- These two are sometimes null, take a look at the call...
-    const void**    pAlloc_Out)     // <- These two are sometimes null, take a look at the call... 
+    uint64*         pSizeAct_Out,
+    const void**    pAlloc_Out)
 {
     unsigned int pgSize = PageSize()
     size_In += pgSize - (size_In % pgSize);
@@ -75,17 +72,19 @@ Plat_Virtual_Alloc(
     {
         *pSizeAct_Out = size_In;
         *pAlloc_Out = pAlloc;
+        return PLAT_SUCCESS;
     }
-    return;
+    return PLAT_NOALLOC;
 }
 
-void*
+result
 Plat_Virtual_Free(
     uint64          size_In,
-    void*           pBlock_In)
+    const void**    block_InOut)
 {
-    SysFree(pBlock_In, size_In);
-    return (void*)0;
+    SysFree(*(void**)block_InOut, size_In);
+    *(void**)block_InOut = (void*)0;
+    return PLAT_SUCCESS;
 }
 
 #endif // PLATFORM_H

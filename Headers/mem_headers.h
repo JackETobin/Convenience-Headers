@@ -4,6 +4,10 @@
 #include "Mem_Headers/mem_defines.h"
 #include "Mem_Headers/mem_types.h"
 
+#if defined(USE_ALL) || defined(USE_MEM_HEADERS)
+    #define USE_MEM_ALL
+#endif // USE_ALL
+
 #if defined(USE_PLATFORM) || defined(USE_MEM_ALL)
     #include "platform.h"
 #endif // USE_PLATFORM
@@ -188,10 +192,6 @@
         Mem_DBG(_Pool_Modify(resHnd_In, size_In))
 
 #endif // USE_MEM_POOL
-
-#if defined(USE_MEM_CONTAINER) || defined(USE_MEM_ALL)
-    #include "Mem_Headers/mem_container.h"
-#endif // USE_MEM_CONTAINER
 
 #if defined(USE_MEM_ARRAY) || defined(USE_MEM_ALL)
     #include "Mem_Headers/mem_array.h"

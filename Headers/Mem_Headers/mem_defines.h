@@ -27,7 +27,7 @@
 #define MEM_NONEXT      (result)0X09 // No next allocation to iterate to.
 
 // MEM_POOL_H
-#define POOL_SUCCESS    (result)0X0A // memory manager success.
+#define POOL_SUCCESS    (result)0X0A // memory pool success.
 #define POOL_NOSPACE    (result)0X0B // No space available.
 #define POOL_NOPOOL     (result)0X0C // No avaolable pools, call Pool_Build().
 #define POOL_NOSIZE     (result)0X0D // No size provided.
@@ -45,5 +45,15 @@
 #define POOL_INVOFFST   (result)0X19 // Invalid buffer offset on write attempt.
 #define POOL_RESFAULT   (result)0x1A // Unable to obtain the reservation.
 #define POOL_FAILURE    (result)0X1B // Memory manager critical failure.
+
+// PLATFORM_H
+#define PLAT_SUCCESS (result)0X1C // Platform success.
+#define PLAT_NOALLOC (result)0X1D // Platform unable to allocate memory.
+
+// MEM_ARRAY_H
+#define ARRAY_SUCCESS   (result)0X1F // array success.
+#define ARRAY_NOALLOC   (result)0X1D // Unable to allocate space for the array.
+#define ARRAY_NOFREE    (result)0X1E // An error ocurred while attempting to free the array.
+#define ARRAY_NORESIZE  (result)0X1F // Array was unable to dynamically resize.
 
 #endif // MEM_DEFINES_H

@@ -6,7 +6,7 @@
 
 const char* l_ErrMsg[] = {
     // MEM_ALLOC_H
-    "Operation succesful.",
+    "Memory allocator success.",
     "No overwrite issues detected.",
     "Memory overwrite detected.",
     "Unable to allocate memory.",
@@ -35,16 +35,20 @@ const char* l_ErrMsg[] = {
     "Reservatioin isn't large enough, data has been truncated.",
     "Invalid buffer offset on write attempt.",
     "Unable to obtain the reservation.",
-    "Memory pool critical failure."
+    "Memory pool critical failure.",
+
+    // PLATFORM_H
+    "Platform success.",
+    "Platform unable to allocate memory."
 };
 
-#if defined(PLATFORM_H) || defined(MEM_DEBUG)
+#if defined(PLATFORM_H) || defined(MEM_USE_ALL)
     #include <stdio.h>
     #define Print(s, ...) printf(s, __VA_ARGS__);
 #else
     #include <stdio.h>
     #define Print(s, ...) printf(s, __VA_ARGS__);
-#endif // PLATFORM_H || MEM_DEBUG
+#endif // PLATFORM_H
 
 result
 _Debug_Catch(result res_In, char* call_In, int32 line_In, char* file_In)

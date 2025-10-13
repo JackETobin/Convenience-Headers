@@ -1,6 +1,0 @@
-#ifndef MEM_CONTAINER_H
-#define MEM_CONTAINER_H
-
-
-
-#endif // MEM_CONTAINER_H

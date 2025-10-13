@@ -1,69 +1,91 @@
-// TODO: Write out the documentation.
-// TODO: Add a TAG TRUNCATION warning to the results, and to the tagging mechanism.
 /*
-// NOTE: If you're using this along with other custom headers, put them in the same folder.
-
-
+ * Mem Alloc is built on top of the platform layer, but can be used without it.
+ * Note that if you're using this with platform.h, Mem Alloc is designed to be
+ * in its own folder [e.g. Mem->mem.alloc.h] such that platform.h is up one
+ * level.
+ * 
+ * Mem Alloc is configured with preprocessor definitions that can be emplaced in
+ * whatever file includes Mem Alloc.
+ * 
+ * Configuration defines that can be used with mem_alloc:
+ *  -USE_MEM_TYPES:     includes mem_types.h
+ *  -USE_MEM_DEFINES:   includes mem_defines.h
+ *  -USE_MEM_DEBUG:     includes mem_debug.h and activates debug functionality.
+ *  -USE_PLATFORM:      includes platform.h and uses the OS's virtual alloc
+ *                      function as opposed to malloc().
+ * 
+ * Mem Alloc tracks and tags allocations. All allocations are linked and added
+ * to a singly linked list that can be iterated through internally. Allocations
+ * are returned as void pointers. Freeing an allocation reduces the size of the
+ * allocation to the size of the allocatiion metadata, and the metadata alone is
+ * kept in the linked list of allocations that have been made. Freed allocations
+ * can be removed from the linked list via a call to _Mem_ClearFree().
+ * 
+ * Calling _Mem_Kill() frees all allocations, all members of the linked list,
+ * and nullifies the linked list.
 */
-
 #ifndef MEM_ALLOC_H
 #define MEM_ALLOC_H
 
-#if defined(USE_MEM_TYPES) || defined(USE_MEM_ALL)
-    #include "mem_types.h"
-#else
-    #define null                ((void*)0)
+#if !defined(MEM_HEADERS_H)
+    #if defined(USE_MEM_TYPES) || defined(USE_MEM_ALL)
+        #include "mem_types.h"
+    #else
+        #define null                ((void*)0)
 
-    typedef unsigned char       uint8;
-    typedef unsigned int        uint32;
-    typedef unsigned long long  uint64;
+        typedef unsigned char       uint8;
+        typedef unsigned int        uint32;
+        typedef unsigned long long  uint64;
 
-    typedef double              float64;
+        typedef double              float64;
 
-    typedef uint8               result;
-#endif // USE_MEM_TYPES
+        typedef uint8               result;
+    #endif // USE_MEM_TYPES
+
+    #if defined(USE_MEM_DEFINES) || defined(USE_MEM_ALL)
+        #include "mem_defines.h"
+    #else
+        #define persist         static
+        #define internal        static
+
+        #define kb(x)           (x * 1024)
+        #define mb(x)           (kb(x) * 1024)
+        #define gb(x)           (mb(x) * 1024)
+
+        #define unused(x)           (void)(x)
+
+        #define MEM_SUCCESS     (result)0X00 // Operation succesful.
+        #define MEM_NOISSUE     (result)0X01 // No overwrite issues detected.
+        #define MEM_OUTOFBOUNDS (result)0X02 // Memory overwrite detected.
+        #define MEM_NOALLOC     (result)0X03 // Unable to allocate memory.
+        #define MEM_NOFREE      (result)0X04 // Unable to free memory.
+        #define MEM_NOOUTPUT    (result)0X05 // No output buffer provided.
+        #define MEM_NOINPUT     (result)0X06 // Input field missing.
+        #define MEM_UNUSED      (result)0X07 // No allocations made as of yet.
+        #define MEM_NOPREV      (result)0X08 // No previous allocation to iterate to.
+        #define MEM_NONEXT      (result)0X09 // No next allocation to iterate to.
+    #endif // USE_MEM_DEFINES
+#endif // MEM_HEADERS_H
 
 typedef const void**        p_mem;
 
-#if defined(USE_MEM_DEFINES) || defined(USE_MEM_ALL)
-    #include "mem_defines.h"
+#if defined(USE_MEM_DEBUG) || defined(USE_MEM_ALL)
+    #include "mem_debug.h"
+    #define DBG(func) _Debug_Catch(func, #func, line, file)
 #else
-    #define persist         static
-    #define internal        static
-
-    #define kb(x)           (x * 1024)
-    #define mb(x)           (kb(x) * 1024)
-    #define gb(x)           (mb(x) * 1024)
-    
-    #define unused(x)           (void)(x)
-
-    #define MEM_SUCCESS     (result)0X00 // Operation succesful.
-    #define MEM_NOISSUE     (result)0X01 // No overwrite issues detected.
-    #define MEM_OUTOFBOUNDS (result)0X02 // Memory overwrite detected.
-    #define MEM_NOALLOC     (result)0X03 // Unable to allocate memory.
-    #define MEM_NOFREE      (result)0X04 // Unable to free memory.
-    #define MEM_NOOUTPUT    (result)0X05 // No output buffer provided.
-    #define MEM_NOINPUT     (result)0X06 // Input field missing.
-    #define MEM_UNUSED      (result)0X07 // No allocations made as of yet.
-    #define MEM_NOPREV      (result)0X08 // No previous allocation to iterate to.
-    #define MEM_NONEXT      (result)0X09 // No next allocation to iterate to.
-#endif // USE_MEM_DEFINES
+    #define DBG(func) func
+#endif // USE_MEM_DEBUG
 
 #if defined(PLATFORM_H) || defined(USE_PLATFORM)
     #include "../platform.h"
-    #define Malloc(size_InOut, mem_Out) Plat_Virtual_Alloc(size_InOut, null, &size_InOut, (const void**)&mem_Out)
-    #define Free(mem)                   Plat_Virtual_Free(0, mem)
+    #define Malloc(size_InOut, mem_Out) \
+        Plat_Virtual_Alloc(size_InOut, null, &size_InOut, (p_mem)&mem_Out)
+    #define Free(mem)                   Plat_Virtual_Free(0, (p_mem)&mem)
 #else
     #include<stdlib.h>
     #define Malloc(size_In, mem_Out)    mem_Out = malloc(size_In)
     #define Free(mem)                   free(mem)
-#endif
-
-#if defined(USE_MEM_DEBUG) || defined(USE_MEM_ALL)
-    #include "mem_debug.h"
-#else
-    #define DBG(func) func
-#endif
+#endif // PLATFORM_H
 
 #define MEM_TAG_SIZE 48
 #define DEFAULT_ALIGN 4
@@ -72,7 +94,6 @@ typedef const void**        p_mem;
 
 #define MEM_STATUS_READY 0X01
 #define MEM_STATUS_ISSUE 0X02
-// #define STATUS_ZEROD 0X04
 #define MEM_STATUS_FREED 0X08
 
 typedef struct Mem_Block_St
@@ -177,7 +198,7 @@ l_mem_alloc(
     size_In += alignment_In - (size_In % alignment_In);
     size_In += SIZE_META + sizeof(uint64);
     mem_block* block = null;
-    Malloc(size_In, block);
+    DBG(Malloc(size_In, block));
     if(!block) 
         return MEM_NOALLOC;
 
@@ -217,12 +238,12 @@ l_mem_realloc(
         return MEM_SUCCESS;
 
     mem_block* blockNew = null; 
-    Malloc(size_In, blockNew);
+    DBG(Malloc(size_In, blockNew));
     if(!blockNew) 
         return MEM_NOALLOC;
 
     l_mem_copy(blockOld, blockNew, ((size_In < sizeOld) ? size_In : sizeOld));
-    Free(blockOld);
+    DBG(Free(blockOld));
         
     if(blockNew->pPrev) (blockNew->pPrev)->pNext = blockNew;
     if(blockNew->pNext) (blockNew->pNext)->pPrev = blockNew;
@@ -345,7 +366,7 @@ _Mem_ClearFree(void)
             block->pNext = bFree->pNext;
             if(bFree->pNext) 
                 (bFree->pNext)->pPrev = block;
-            Free((void*)bFree);
+            DBG(Free(bFree));
         };
     return MEM_SUCCESS;
 };
@@ -368,7 +389,7 @@ _Mem_Kill(void)
     {
         mem_block* target = l_AllocHead;
         l_AllocHead = l_AllocHead->pPrev;
-        Free(target);
+        DBG(Free(target));
     };
     return MEM_SUCCESS;
 };
