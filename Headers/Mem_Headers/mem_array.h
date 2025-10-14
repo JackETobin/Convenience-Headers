@@ -109,7 +109,7 @@ typedef void*                   array_hnd;
         array_hnd*  data_In)
     {
         array* data = (void*)(*data_In) - sizeof(array);
-        if(DBG(_Pool_Release(data->res)) != POOL_SUCCESS)
+        if(DBG(_Pool_Release(&data->res)) != POOL_SUCCESS)
             return ARRAY_NOFREE;
         *data_In = null;
         return ARRAY_SUCCESS;

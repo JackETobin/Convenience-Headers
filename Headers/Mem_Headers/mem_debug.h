@@ -58,7 +58,8 @@ _Debug_Catch(result res_In, char* call_In, int32 line_In, char* file_In)
         return res_In;
 #endif // DEBUG_LOG_VERBOSE
 
-    Print("File: %s\nLine: %d\nCall: %s\nResult: %s\n\n", file_In, line_In, call_In, l_ErrMsg[res_In]);
+    Print("File: %s\nLine: %d\nCall: %s\nResult: %s\n\n", 
+        file_In, line_In, call_In, l_ErrMsg[res_In]);
     return res_In;
 };
 

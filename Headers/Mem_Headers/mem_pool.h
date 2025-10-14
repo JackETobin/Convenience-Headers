@@ -474,16 +474,17 @@ _Pool_Reserve_At(
  *  - input  - resHnd_In: a handle to the designated reservation intended to be released.
  *
  * Data within the reservation is not destroyed, the reservation is simply flagged as released and
- * if possible, coalesced into adjacent released reservations.
+ * if possible, coalesced into adjacent released reservations. Handle is then zero'd out so that it
+ * cannot be used for an operatioon other than another call to _Pool_Reserve().
  */
 result
 _Pool_Release(
-    res_hnd         resHnd_In)
+    res_hnd*        resHnd_InOut)
 {
     uint32* res = null;
     uint32 offset = 0;
     pool* target = null;
-    result resCheck = l_pool_obtainRes(resHnd_In, &res, &offset, &target);
+    result resCheck = l_pool_obtainRes(*resHnd_InOut, &res, &offset, &target);
     if(resCheck != POOL_SUCCESS)
         return resCheck;
         
@@ -632,7 +633,7 @@ _Pool_Modify(
     if(checkAll != POOL_SUCCESS)
         return checkAll;
 
-    checkAll = _Pool_Release(*resHnd_InOut);
+    checkAll = _Pool_Release(resHnd_InOut);
     if(checkAll != POOL_SUCCESS)
         return checkAll;
 
