@@ -30,7 +30,10 @@
  * should be STRING_INT64_BUFFER.
  */
 result
-_String_Itoa(int64 int64_In, uint32 buffSize_In, char* str_Out)
+_String_Itoa(
+    int64           int64_In, 
+    uint32          buffSize_In, 
+    char*           str_Out)
 {
     uint64 divisor = 1;
     uint32 strBack = 0;
@@ -76,7 +79,20 @@ result
 _String_Comp();
 
 result
-_String_TrimLeading();
+_String_TrimLeading(
+    char*           str_In,
+    uint32          buffSize_In,
+    char*           buff_Out)
+{
+    uint32 offset = 0;
+    uint32 strBack = 0;
+    while(str_In[offset] == ' ')
+        offset++;
+    for(;str_In[strBack + offset] != '\0' && strBack <= buffSize_In; strBack++)
+        buff_Out[strBack] = str_In[strBack + offset];
+    buff_Out[strBack] = '\0';
+    return (strBack < buffSize_In) ? STRING_SUCCESS : STRING_TRUNCATE;
+};
 
 result
 _String_TrimTrailing();
@@ -85,13 +101,34 @@ result
 _String_Trim();
 
 result
-_String_RemoveSpaces();
+_String_RemoveSpaces(
+    char*           str_In,
+    uint32          buffSize_In,
+    char*           buff_Out)
+{
+    uint32 strBack = 0;
+    for(;*str_In != '\0' && strBack <= buffSize_In; str_In++)
+        if(*str_In != ' ')
+        {
+            buff_Out[strBack] = *str_In;
+            strBack++;
+        }
+    buff_Out[strBack] = '\0';
+    return (strBack < buffSize_In) ? STRING_SUCCESS : STRING_TRUNCATE;
+};
 
+/*
+ * All strings present in the intake array MUST be null terminated.
+ */
 result
-_String_Concat(char* strArray_In[], uint32 count_In, uint64 buffSize_In, char* str_Out)
+_String_Concat(
+    char*           strArray_In[], 
+    uint32          count_In, 
+    uint32          buffSize_In, 
+    char*           str_Out)
 {
     char* dst = str_Out;
-    uint64 strBack = 0;
+    uint32 strBack = 0;
     for(uint32 i = 0; i < count_In; i++)
     {
         char* src = strArray_In[i];

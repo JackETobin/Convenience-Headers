@@ -28,7 +28,7 @@
 
 // MEM_POOL_H
 #define POOL_SUCCESS    (result)0X0A // memory pool success.
-#define POOL_NOSPACE    (result)0X0B // No space available.
+#define POOL_NOSPACE    (result)0X0B // Not enough space available.
 #define POOL_NOPOOL     (result)0X0C // No avaolable pools, call Pool_Build().
 #define POOL_NOSIZE     (result)0X0D // No size provided.
 #define POOL_NOALLOC    (result)0X0E // No allocator provided.

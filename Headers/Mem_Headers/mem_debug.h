@@ -1,3 +1,4 @@
+// TODO: Set up a file system to open and print a text file with the debug report info.
 #ifndef MEM_DEBUG_H
 #define MEM_DEBUG_H
 
@@ -19,7 +20,7 @@ const char* l_ErrMsg[] = {
 
     // MEM_POOL_H
     "Memory pool success.",
-    "No space available.",
+    "Not enough space available.",
     "No avaolable pools, call Pool_Build().",
     "No size provided.",
     "No allocator provided.",
@@ -32,7 +33,7 @@ const char* l_ErrMsg[] = {
     "Invalid reservation handle.",
     "Reservation has been released.",
     "Release has already been called on this reservation.",
-    "Reservatioin isn't large enough, data has been truncated.",
+    "Reservation isn't large enough, data has been truncated.",
     "Invalid buffer offset on write attempt.",
     "Unable to obtain the reservation.",
     "Memory pool critical failure.",
@@ -51,15 +52,25 @@ const char* l_ErrMsg[] = {
 #endif // PLATFORM_H
 
 result
-_Debug_Catch(result res_In, char* call_In, int32 line_In, char* file_In)
+_Debug_Catch(
+    result          res_In, 
+    char*           call_In, 
+    int32           line_In, 
+    char*           file_In)
 {
-#if !defined(DEBUG_LOG_VERBOSE)
-    if(res_In == POOL_SUCCESS || res_In == MEM_SUCCESS)
-        return res_In;
-#endif // DEBUG_LOG_VERBOSE
+#if defined(DEBUG_LOG_RESULT)
+    #if !defined(DEBUG_LOG_VERBOSE)
+        if(res_In == POOL_SUCCESS || res_In == MEM_SUCCESS)
+            return res_In;
+    #endif // DEBUG_LOG_VERBOSE
 
-    Print("File: %s\nLine: %d\nCall: %s\nResult: %s\n\n", 
-        file_In, line_In, call_In, l_ErrMsg[res_In]);
+        Print("File: %s\nLine: %d\nCall: %s\nResult: %s\n\n", 
+            file_In, line_In, call_In, l_ErrMsg[res_In]);
+#else
+    unused(call_In);
+    unused(line_In);
+    unused(file_In);
+#endif // DEBUG_LOG_RESULT
     return res_In;
 };
 
@@ -156,14 +167,14 @@ l_mem_pool_printInfo(void)
             uint64 spaceTotal = (target->oEnd - 1) * POOL_SECTION_SIZE;
             uint64 spaceRemaining = (target->oEnd - target->oData) * POOL_SECTION_SIZE;
             uint32 resCount = target->resCount;
-            uint32 voidCount = target->voids[1];
+            uint32 voidCount = target->relCount;
             Print("%s%u\n%s%s\n%s%llu\n%s%llu\n%s%u\n%s%u\n\n",
                 "Pool: ", target->hnd,
                 "Tag: ", tag,
                 "Size Total: ", spaceTotal,
                 "Size Remaining: ", spaceRemaining,
                 "Reservation Count: ", target->resCount,
-                "VoidCount: ", target->voids[1]);
+                "VoidCount: ", target->relCount);
             target = target->pPrev;
         }
         return;
@@ -185,12 +196,24 @@ Print("\n///////////////DEBUG REPORT///////////////\n\n");
     Print("\n/////////////MEM ALLOC BEGIN//////////////\n");
     l_mem_alloc_printInfo();
     Print("\n//////////////MEM ALLOC END///////////////\n\n");
+#else
+    Print("Define 'USE_MEM_ALLOC' to recieve an allocation report.\n");
 #endif // USE_MEM_ALLOC
 #if defined(USE_MEM_POOL) || defined(USE_MEM_ALL)
     Print("\n//////////////MEM POOL BEGIN//////////////\n");
     l_mem_pool_printInfo();
     Print("\n///////////////MEM POOL END///////////////\n\n");
+#else
+    Print("Define 'USE_MEM_POOL' to recieve a pool usage report.\n");
 #endif // USE_MEM_ALLOC
 };
+
+#if !defined(MEM_HEADERS_H)
+    #define Mem_DBG(func) \
+        _Debug_Catch(func, #func, line, file)
+
+    #define Mem_Debug_Report() \
+        _Debug_Report()
+#endif // USE_MEM_DEBUG
 
 #endif // MEM_DEBUG_H

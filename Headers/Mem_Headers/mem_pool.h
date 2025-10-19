@@ -1,4 +1,6 @@
 // TODO: Write the documentation including the possible define declarations.
+// TODO: Hook up a debug mode for magic number intertion so that we can do res integrity checks.
+// TODO: Hook up a res_clear function that clears released data in debug mode -> clear to magic number.
 /*
  * USE_MEM_DEBUG
  * USE_MEM_ALLOC
@@ -24,12 +26,12 @@
     #define persist         static
     #define internal        static
 
-    #define packed          __attribute__((__packed__))
+    // #define packed          __attribute__((__packed__))
 
     #define unused(x)       (void)(x)
 
     #define POOL_SUCCESS    (result)0X0A // memory manager success.
-    #define POOL_NOSPACE    (result)0X0B // No space available.
+    #define POOL_NOSPACE    (result)0X0B // Not enough space available.
     #define POOL_NOPOOL     (result)0X0C // No avaolable pools, call Pool_Build().
     #define POOL_NOSIZE     (result)0X0D // No size provided.
     #define POOL_NOALLOC    (result)0X0E // No allocator provided.
@@ -71,12 +73,25 @@
 #endif // MEM_ALLOC_H || CUSTOM_ALLOCATOR
 
 #define MEM_ASSERT(x)       x
-#define POOL_SECTION_SIZE   32
+#define POOL_SECTION_SIZE   64
 
 #define POOL_TOP(t) (void*)((void*)t + sizeof(*t))
 
 #define RES_MIN_SIZE                    3
+
+#if defined(USE_MEM_DEBUG) || defined(USE_MEM_ALL)
 #define RES_META_SIZE                   (4 * sizeof(uint32))
+    #define RES_MAGNUM 0
+    #define DEB_MAGNUM 0XCDCDCDCDU
+    #define RES_STATUS 1
+    #define RES_SIZE 2
+    #define RES_DATA 3
+#else
+#define RES_META_SIZE                   (2 * sizeof(uint32))
+    #define RES_STATUS 0
+    #define RES_SIZE 1
+    #define RES_DATA 2
+#endif // USE_MEM_DEBUG
 
 #define RES_HND_ASSEMBLE(r, p, hnd)     (hnd |= (r << 16) | p)
 #define RES_HND_OFFSET(r, hnd)          (r = (hnd >> 16))
@@ -106,17 +121,24 @@ typedef enum {
     POOL_DYNAMIC    = (uint16)POOL_STATE_DYNAMIC
 } resize_type;
 
-typedef struct packed Pool_St
+typedef struct Void_Entry_St
+{
+    uint32          size;
+    uint32          offset;
+} rel_entry;
+
+typedef struct Pool_St
 {
     struct Pool_St* pPrev;
-    uint32*         voids;
+    rel_entry*      released;
     uint32          resCount;
+    uint32          relCount;
+    uint32          relMax;
     uint32          oEnd;
     uint32          oData;
     uint16          state;
     pool_hnd        hnd;
 } pool;
-_Static_assert(sizeof(pool) <= POOL_SECTION_SIZE, "Error: mem_pool.h is not supported on this architecture.");
 
 persist pool* l_PoolHead = null;
 
@@ -124,16 +146,16 @@ persist pool* l_PoolHead = null;
     internal result
     l_pool_freeAll()
     {
-        pool* target = l_Latest;
+        pool* target = l_PoolHead;
         while(target)
         {
             pool* toFree = target;
             target = target->pPrev;
 
-            Pool_Free(toFree->voids);
+            Pool_Free(toFree->released);
             Pool_Free(toFree);
         }
-        l_Latest = null;
+        l_PoolHead = null;
         return POOL_SUCCESS;
     }
     #define Pool_Free_All() l_pool_freeAll()
@@ -179,58 +201,43 @@ l_pool_setResMeta(uint32* res_In, uint32 status_In, uint32 size_In)
     uint64 sizeAlign = RES_SIZE_SECTOALIGN(size_In);
     if(!sizeAlign)
         return sizeAlign;
-    res_In[0] = res_In[sizeAlign - 1] = status_In;
-    res_In[1] = res_In[sizeAlign - 2] = size_In;
+#if defined(USE_MEM_DEBUG) || defined(USE_MEM_ALL)
+    res_In[RES_MAGNUM] = res_In[sizeAlign - 1] = DEB_MAGNUM;
+#endif
+    res_In[RES_STATUS] = status_In;
+    res_In[RES_SIZE] = size_In;
     return sizeAlign;
 }
 
 internal uint32
 l_pool_reclaim(
     pool*           target_In, 
-    uint32*         voidRes_In,
-    uint32          voidIndex_In,
     uint32          adjustedSize_In)
 {
-    uint32 offset = 0;
-    uint32* newRes = null;
-    uint64 newSizeAlign = 0;
-
-    if(voidRes_In[1] - adjustedSize_In < RES_MIN_SIZE)
-    {
-        uint32* voidList = target_In->voids + 2;
-        offset = voidList[voidIndex_In];
-        newRes = voidRes_In;
-        newSizeAlign = RES_SIZE_SECTOALIGN(voidRes_In[1]);
-
-        uint32 lim = target_In->voids[1];
-        for(uint32 i = voidIndex_In; i < lim; i++)
-            voidList[i] = voidList[i + 1];
-    }
-    else
-    {
-        voidRes_In[1] -= adjustedSize_In;
-        uint64 oldSizeAlign = l_pool_setResMeta(voidRes_In, voidRes_In[0], voidRes_In[1]);
-    
-        newRes = voidRes_In + oldSizeAlign;
-        newSizeAlign = RES_SIZE_SECTOALIGN(adjustedSize_In);
-        newRes[1] = newRes[newSizeAlign - 2] = adjustedSize_In;
-        offset = ((void*)newRes - (void*)target_In) / POOL_SECTION_SIZE;
-    }
-    newRes[0] = newRes[newSizeAlign - 1] = RES_STATUS_ACTIVE;
-    target_In->resCount++;
-    return offset;
+    for(uint32 i = 0; i < target_In->relCount; i++)
+        if(target_In->released[i].size >= adjustedSize_In)
+        {
+            if(target_In->released[i].size > adjustedSize_In + RES_MIN_SIZE)
+            {
+                target_In->released[i].size -= adjustedSize_In;
+                return target_In->released[i].offset + target_In->released[i].size;
+            }
+            return target_In->released[i].offset;
+        }
+    return 0;
 }
 
-internal inline void
-l_pool_removeVoidEntry(pool* target_In, uint32 offset_In)
+internal uint32
+l_pool_new(pool* target_In, uint32 adjustedSize_In)
 {
-    uint32 index = 2;
-    while(target_In->voids[index] != offset_In && index <= target_In->voids[1])
-        index++;
-    for(; index < target_In->voids[1] + 2; index++)
-        target_In->voids[index] = target_In->voids[index + 1];
-    target_In->voids[1]--;
-    return;
+    uint32 offset = 0;
+    if(adjustedSize_In <= (target_In->oEnd - target_In->oData))
+    {
+        offset = target_In->oData;
+        target_In->oData += adjustedSize_In;
+        target_In->resCount++;
+    }
+    return offset;
 }
 
 internal uint32
@@ -238,14 +245,13 @@ l_pool_reserve(
     pool*           target_In, 
     uint32          adjustedSize_In)
 {
-    if(adjustedSize_In > (target_In->oEnd - target_In->oData))
-        return (uint32)0;
-    uint32* res = (void*)target_In + (target_In->oData * POOL_SECTION_SIZE);
-    l_pool_setResMeta(res, RES_STATUS_ACTIVE, adjustedSize_In);
-
-    uint32 offset = target_In->oData;
-    target_In->oData += adjustedSize_In;
-    target_In->resCount++;
+    uint32 offset = l_pool_reclaim(target_In, adjustedSize_In);
+    offset = (!offset) ? l_pool_new(target_In, adjustedSize_In) : offset;
+    if(offset)
+    {
+        uint32* res = (void*)target_In + (offset * POOL_SECTION_SIZE);
+        l_pool_setResMeta(res, RES_STATUS_ACTIVE, adjustedSize_In);
+    }
     return offset;
 }
 
@@ -271,9 +277,9 @@ _Pool_Build(
 #endif // MEM_ALLOC_H
     size_In += (2 * POOL_SECTION_SIZE) - (size_In % POOL_SECTION_SIZE);
     pool* new = null;
-    uint32* bucket = null;
+    rel_entry* bucket = null;
     MEM_ASSERT(DBG(Pool_Alloc(size_In, tag_In, new)));
-    MEM_ASSERT(DBG(Pool_Alloc((sizeof(*bucket) * (POOL_VOID_DEFAULT + 2)), tag_In, bucket)));
+    MEM_ASSERT(DBG(Pool_Alloc((sizeof(*bucket) * POOL_VOID_DEFAULT), tag_In, bucket)));
     if(!new || !bucket) 
     {
         if(new) MEM_ASSERT(Pool_Free(new));
@@ -283,9 +289,7 @@ _Pool_Build(
     uint32 end = size_In / POOL_SECTION_SIZE;
     uint8 hnd = (l_PoolHead) ? l_PoolHead->hnd + 1 : 0;
     uint8 state = POOL_STATE_READY | resize_In;
-    bucket[0] = POOL_VOID_DEFAULT;
-    bucket[1] = 0;
-    *new = (pool){l_PoolHead, bucket, 0, end, 1, state, hnd};
+    *new = (pool){l_PoolHead, bucket, 0, 0, POOL_VOID_DEFAULT, end, 1, state, hnd};
 
     l_PoolHead = new;
     *poolHnd_Out = new->hnd;
@@ -315,8 +319,7 @@ _Pool_Destroy(
     }
     if(target->state == POOL_STATE_FREED) 
         return POOL_DBLFREE;
-    void* voids = target->voids;
-    MEM_ASSERT(DBG(Pool_Free(voids)));
+    MEM_ASSERT(DBG(Pool_Free(target->released)));
     MEM_ASSERT(DBG(Pool_Realloc(sizeof(pool), target)));
     next->pPrev = (next != target) ? target : null;
     target->state = POOL_STATE_FREED;
@@ -388,34 +391,29 @@ _Pool_Reserve(
         return POOL_NOPOOL;
     
     size_In += RES_META_SIZE;
-    size_In += POOL_SECTION_SIZE - (size_In % POOL_SECTION_SIZE);
-    uint32 sizeAlign = size_In / sizeof(uint32);
+    size_In += (POOL_SECTION_SIZE - (size_In % POOL_SECTION_SIZE));
     size_In /= POOL_SECTION_SIZE;
 
     pool* target = l_PoolHead;
     uint32 offset = 0;
     while(target && !offset)
     {
-        for(uint32 i = 0; i < target->voids[1] && !offset; i++)
+        offset = l_pool_reserve(target, size_In);
+        if(!offset && (target->state & POOL_STATE_DYNAMIC))
         {
-            uint32* voidRes = (void*)target + (target->voids[2 + i] * POOL_SECTION_SIZE);
-            uint32 voidSize = voidRes[1];
-            offset = (size_In <= voidSize) ? l_pool_reclaim(target, voidRes, i, size_In) : 0;
+            pool_hnd hnd = target->hnd;
+            uint64 poolSize = target->oEnd * POOL_SECTION_SIZE;
+            DBG(_Pool_Resize(hnd, (poolSize * 1.5) + (size_In * POOL_SECTION_SIZE)));
+            target = l_PoolHead;
+            while(target->hnd != hnd && target)
+                target = target->pPrev;
+            offset = l_pool_reserve(target, size_In);
         }
-        offset = (!offset) ? l_pool_reserve(target, size_In) : offset;
         target = (!offset) ? target->pPrev : target;
     }
     if(!offset)
-    {
-        if(target->state | POOL_STATE_DYNAMIC)
-        {
-            uint64 poolSize = target->oEnd * POOL_SECTION_SIZE;
-            DBG(_Pool_Resize(target->hnd, poolSize * 1.5));
-            return _Pool_Reserve(size_In, resHnd_Out);
-        }
         return POOL_NOSPACE;
-    }
-        
+
     *resHnd_Out = 0;
     RES_HND_ASSEMBLE(offset, target->hnd, *resHnd_Out);
     return POOL_SUCCESS;
@@ -423,12 +421,14 @@ _Pool_Reserve(
 
 /*
  * FUNCTION: Reserves space in a memory pool.
- *  - input  - size_In: bytesize of the space to be reserved.
- *  - input  - poolHnd_In: handle of the pool in which a reservation is to be made.
- *  - output - resHnd_Out: buffer to be filled with a handle corresponding the the newly reserved memory.
+ *  - input  - size_In:     bytesize of the space to be reserved.
+ *  - input  - poolHnd_In:  handle of the pool in which a reservation is to be made.
+ *  - output - resHnd_Out:  buffer to be filled with a handle corresponding the the newly reserved 
+ *                          memory.
  * 
- * Reservations are made in a designated pool. This function will not attempt to find space in another location
- * should the designated pool be full.
+ * Reservations are made in a designated pool. This function will not attempt to find space in 
+ * another location should the designated pool be full. If the pool is flagged as dynamic, the pool 
+ * will resize, then reserve space.
  */
 result
 _Pool_Reserve_At(
@@ -443,7 +443,6 @@ _Pool_Reserve_At(
     
     size_In += RES_META_SIZE;
     size_In += POOL_SECTION_SIZE - (size_In % POOL_SECTION_SIZE);
-    uint32 sizeAlign = size_In / sizeof(uint32);
     size_In /= POOL_SECTION_SIZE;
 
     pool*target = l_PoolHead;
@@ -452,14 +451,17 @@ _Pool_Reserve_At(
     if(!target)
         return POOL_INVPLHND;
 
-    uint32 offset = 0;
-    for(uint32 i = 0; i < target->voids[1] && !offset; i++)
+    uint32 offset = l_pool_reserve(target, size_In);
+    if(!offset && (target->state & POOL_STATE_DYNAMIC))
     {
-        uint32* voidRes = (void*)target + (target->voids[2 + i] * POOL_SECTION_SIZE);
-        uint32 voidSize = voidRes[1];
-        offset = (size_In <= voidSize) ? l_pool_reclaim(target, voidRes, i, size_In) : 0;
+        pool_hnd hnd = target->hnd;
+        uint64 poolSize = target->oEnd * POOL_SECTION_SIZE;
+        DBG(_Pool_Resize(hnd, (poolSize * 1.5) + (size_In * POOL_SECTION_SIZE)));
+        target = l_PoolHead;
+        while(target->hnd != hnd && target)
+            target = target->pPrev;
+        offset = l_pool_reserve(target, size_In);
     }
-    offset = (!offset) ? l_pool_reserve(target, size_In) : offset;
     if(!offset)
         return POOL_NOSPACE;
 
@@ -487,52 +489,51 @@ _Pool_Release(
     result resCheck = l_pool_obtainRes(*resHnd_InOut, &res, &offset, &target);
     if(resCheck != POOL_SUCCESS)
         return resCheck;
-        
+    
     if(res[0] == RES_STATUS_FREE)
         return POOL_DBLFREE;
 
-    target->resCount--;
-    uint32 size = RES_SIZE_SECTOALIGN(res[1]);
-    uint32 addOffset = offset;
-    uint32 removeOffsets[] = {0, 0, 0};
-    // Coalesce front.
-    if(res[size] == RES_STATUS_FREE)
+    rel_entry released = { res[1], offset};
+    rel_entry* relList = target->released;
+    uint32 relIndex = target->relCount;
+    while(relIndex)
     {
-        res[1] += res[size + 1];
-        removeOffsets[0] = offset + res[size + 1];
-    }
-    if(offset > 0 && res[-1] == RES_STATUS_FREE)
-    {
-        uint32 prevSize = RES_SIZE_SECTOALIGN(res[-2]);
-        res -= prevSize;
-        offset -= res[1];
-        res[1] += res[prevSize + 1];
-        addOffset = 0;
-    }
-    if(offset + res[1] >= target->oData)
-    {
-        res[0] = res[1] = 0;
-        target->oData = offset;
-        removeOffsets[(removeOffsets[0] > 0)] = offset;
-        addOffset = 0;
-    }
-    l_pool_setResMeta(res, RES_STATUS_FREE, res[1]);
-    for(uint32 i = 0; removeOffsets[i]; i++)
-        l_pool_removeVoidEntry(target, removeOffsets[i]);
-    if(addOffset)
-    {
-        if(target->voids[1] >= target->voids[0])
+        if(relList[relIndex - 1].offset < offset)
         {
-            void* voids = target->voids;
-            Pool_Realloc((target->voids[0] * 2) + 2, voids);
-            target->voids = voids;
-            target->voids[0] *= 2;
+            relList[relIndex] = released;
+            break;
         }
-        target->voids[2 + target->voids[1]] = offset;
-        target->voids[1]++;
+        relList[relIndex] = (relIndex != 0) ? relList[relIndex - 1] : released;
+        relIndex--;
     }
+    relList[relIndex] = (relIndex) ? relList[relIndex] : released;
+    target->relCount++;
+
+    uint32 coalesce[] = { 0, 0, 0};
+    for(uint32 i = relIndex - 1; i < relIndex + 1; i++)
+        if(relList[i].offset + relList[i].size == relList[i + 1].offset)
+        {
+            relList[i].size += relList[i + 1].size;
+            coalesce[0]++;
+            coalesce[coalesce[0]] = i + 1;
+        }
+    while(coalesce[0])
+    {
+        for(uint32 i = coalesce[coalesce[0]]; i < target->relCount; i++)
+            relList[i] = relList[i + 1];
+        target->relCount--;
+        coalesce[0]--;
+    }
+    if(relList[target->relCount - 1].offset + relList[target->relCount - 1].size == target->oData)
+    {
+        target->oData -= relList[target->relCount - 1].size;
+        relList[target->relCount - 1] = (rel_entry){ 0 };
+        target->relCount--;
+    }
+    target->resCount--;
+    *resHnd_InOut = 0;
     return POOL_SUCCESS;
-};
+}
 
 /* 
  * FUNCTION: Retrieves a raw pointer to a reservation's data.
@@ -568,9 +569,9 @@ _Pool_Retrieve(
  *  - input  - dataSize_In: the size of the source data to be written.
  *  - input  - offest_In: the offset into the destination reservation where data is to be written.
  * 
- * This function prevents overwriting the reservation. If dataSize_In is zero, the function will write 
- * to the end of the reservation. It will read past the source data buffer should the buffer be smaller 
- * than the reservation.
+ * This function prevents overwriting the reservation. If dataSize_In is zero, the function will 
+ * write to the end of the reservation. It will read past the source data buffer should the buffer 
+ * be smaller than the reservation.
  */
 result
 _Pool_Write(
@@ -640,5 +641,129 @@ _Pool_Modify(
     *resHnd_InOut = newResHnd;
     return POOL_SUCCESS;
 };
+
+#if !defined(MEM_HEADERS_H)
+
+    /* 
+    * FUNCTION: Builds a memory pool.
+    *  - input  - size_In:      byte size of the pool to be built, will be aligned to the 
+    *                           POOL_SECTION_SIZE.
+    *  - input  - tag_In:       memory tag for the pool, requires MEM_ALLOC_H.
+    *  - input  - resize_In:    flag that indicates whether or not the pool can be resized.
+    *  - output - poolHnd_Out:  output buffer to be filled with the handle of the newly built pool.
+    * 
+    * Each pool consists of two allocations: one that is the requested memory space and the space 
+    * metadata, and second allocation for the free-list that can grow dynamically.
+    */
+    #define Pool_Build(size_In, tag_In, resize_In, poolHnd_Out) \
+        Mem_DBG(_Pool_Build(size_In, tag_In, resize_In, poolHnd_Out))
+    
+    /* 
+    * FUNCTION: Destroys a designated memory pool.
+    *  - input  - poolHnd_In:   a handle to a pool designated for destruction.
+    *
+    * Pools are not completely disgarded; they are resized to just the meta-data, and the free list 
+    * is actually freed. This is to preserve the pool index so that the indices for active pools 
+    * remain unchanged.
+    */
+    #define Pool_Destroy(poolHnd_In) \
+        Mem_DBG(_Pool_Destroy(poolHnd_In))
+    
+    /* 
+    * FUNCTION: Frees all allocations associated with mem_pool.h
+    *  - no input -
+    * 
+    * Nullifies the linked list used internally to access allocations.
+    */
+    #define Pool_Kill() \
+        Mem_DBG(_Pool_Kill())
+    
+    /* 
+    * FUNCTION: Resizes a designated pool.
+    *  - input  - poolHnd_In:   a handle of a pool designated for resizing.
+    *  - input  - size_In:      byte size of the space to be reserved.
+    * 
+    * Realloc is called, and the contents of the pool are preserved in the new pool. No changes 
+    * occur in the pool handle, as the pool's index is preserved.
+    */
+    #define Pool_Resize(poolHnd_In, size_In) \
+        Mem_DBG(_Pool_Resize(poolHnd_In, size_In))
+    
+    /* 
+    * FUNCTION: Reserves space in a memory pool.
+    *  - input  - size_In:      byte size of the space to be reserved.
+    *  - output - resHnd_Out:   buffer to be filled with a handle corresponding the the newly 
+    *                           reserved memory.
+    * 
+    * Reservations are made in the first available space in any pool; does not provide control over 
+    * where reservations are made.
+    */
+    #define Pool_Reserve(size_In, resHnd_Out) \
+        Mem_DBG(_Pool_Reserve(size_In, resHnd_Out))
+    
+    /*
+    * FUNCTION: Reserves space in a memory pool.
+    *  - input  - size_In:      bytesize of the space to be reserved.
+    *  - input  - poolHnd_In:   handle of the pool in which a reservation is to be made.
+    *  - output - resHnd_Out:   buffer to be filled with a handle corresponding the the newly 
+    *                           reserved memory.
+    * 
+    * Reservations are made in a designated pool. This function will not attempt to find space in 
+    * another location should the designated pool be full.
+    */
+    #define Pool_Reserve_At(size_In, poolHnd_In, resHnd_Out) \
+        Mem_DBG(_Pool_Reserve_At(size_In, poolHnd_In, resHnd_Out))
+    
+    /* 
+    * FUNCTION: Releases a reservation, allowing for reallocation and preventing further writing.
+    *  - input  - resHnd_In:    a handle to the designated reservation intended to be released.
+    *
+    * Data within the reservation is not destroyed, the reservation is simply flagged as released 
+    * and if possible, coalesced into adjacent released reservations.
+    */
+    #define Pool_Release(resHnd_In) \
+        Mem_DBG(_Pool_Release(resHnd_In))
+    
+    /* 
+    * FUNCTION: Retrieves a raw pointer to a reservation's data.
+    *  - input  - resHnd_In:    a handle to the designated reservation intended to be retrieved.
+    *  - output - rawPtr_Out:   a buffer to be filled with a pointer to reservation data.
+    * 
+    * Since this returns pointers to data, writing into the reservation via the raw pointer is 
+    * possible, however there is not way to guarantee that the reservatioin wont be overwritten 
+    * should you use the pointer to fill the reservation. Request the size beforehand to check how 
+    * much space is actually present.
+    */
+    #define Pool_Retrieve(resHnd_In, rawPtr_Out) \
+        Mem_DBG(_Pool_Retrieve(resHnd_In, rawPtr_Out))
+    
+    /* 
+    * FUNCTION: Copies data into a pool reservation.
+    *  - input  - resHnd_In:    a handle to the reservation designated to be written to.
+    *  - input  - data_In:      a pointer to the source data to be written.
+    *  - input  - dataSize_In:  the size of the source data to be written.
+    *  - input  - offest_In:    the offset into the destination reservation where data is to be 
+    *                           written.
+    * 
+    * This function prevents overwriting the reservation. If dataSize_In is zero, the function will 
+    * write to the end of the reservation. It will read past the source data buffer should the 
+    * buffer be smaller than the reservation.
+    */
+    #define Pool_Write(resHnd_In, data_In, dataSize_In, offset_In) \
+        Mem_DBG(_Pool_Write(resHnd_In, data_In, dataSize_In, offset_In))
+    
+    /* 
+    * FUNCTION: Modifies the size of a reservation.
+    *  - InOut  - resHnd_InOut: a buffer containing a handle to the reservation designated for 
+    *                           resizing.
+    *  - input  - size_In:      the new size of the reservation.
+    * 
+    * InOut reservation handle is modified and the new handle is written into the InOut buffer 
+    * provided.
+    */
+    #define Pool_Modify(resHnd_InOut, size_In) \
+        Mem_DBG(_Pool_Modify(resHnd_In, size_In))
+
+#endif // USE_MEM_POOL
 
 #endif // MEM_POOL_H

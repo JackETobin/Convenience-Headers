@@ -1,3 +1,22 @@
+/*
+ * Mem headers wraps function calls from the headers present in the Mem_Headers folder that should
+ * be present along with this header. This header is configurable with the following pre-processor
+ * definitions:
+ *  -   USE_MEM_HEADERS - Includes all mem headers as well as platform header located externally.
+ *  -   USE_PLATFORM    - Includes "platform_h" located externally.
+ *  -   USE_MEM_DEBUG   - Includes "mem_debug.h"
+ *  -   USE_MEM_ALLOC   - Includes "mem_alloc.h"
+ *  -   USE_MEM_POOL    - Includes "mem_pool.h"
+ *  -   USE_MEM_STRING  - Includes "mem_string.h"
+ *  -   USE_MEM_ARRAY   - Includes "mem_array.h"
+ * 
+ * All of the header files included here can be used independantly of one another and of 
+ * mem_headers.h. Each header file can be used piecewise, but the debugging functionality will be
+ * limited should you request a debug report. As of right now the debug report prints to terminal.
+ */
+
+ // TODO: Setup wrappers for string functions.
+ // TODO: Setup wrappers for array functions.
 #ifndef MEM_HEADERS_H
 #define MEM_HEADERS_H
 
@@ -26,7 +45,6 @@
     #define Mem_Debug_Report()
 
 #endif // USE_MEM_DEBUG
-
 #if defined(USE_MEM_ALLOC) || defined(USE_MEM_ALL)
     #include "Mem_Headers/mem_alloc.h"
     
@@ -67,7 +85,6 @@
         _Mem_BlockSize(mem_In)
 
 #endif // USE_MEM_ALLOG
-
 #if defined(USE_MEM_POOL) || defined(USE_MEM_ALL)
     #include "Mem_Headers/mem_pool.h"
 
@@ -192,9 +209,97 @@
         Mem_DBG(_Pool_Modify(resHnd_In, size_In))
 
 #endif // USE_MEM_POOL
+#if defined(USE_MEM_STRING) || defined(USE_MEM_ALL)
+    #include "Mem_Headers/mem_string.h"
 
+    result
+    _String_Itoa(
+        int64           int64_In, 
+        uint32          buffSize_In, 
+        char*           str_Out);
+
+    result
+    _String_TrimLeading(
+        char*           str_In,
+        uint32          buffSize_In,
+        char*           buff_Out);
+
+    result
+    _String_RemoveSpaces(
+        char*           str_In,
+        uint32          buffSize_In,
+        char*           buff_Out);
+
+    result
+    _String_Concat(
+        char*           strArray_In[], 
+        uint32          count_In, 
+        uint32          buffSize_In, 
+        char*           str_Out);
+#endif
 #if defined(USE_MEM_ARRAY) || defined(USE_MEM_ALL)
     #include "Mem_Headers/mem_array.h"
+
+    result
+    Array_Build(
+        uint32          stride_In, 
+        uint32          count_In, 
+        array_hnd*      hnd_Out);
+
+    result
+    Array_Destroy(
+        array_hnd*      hnd_InOut);
+
+    result
+    Array_Push(
+        array_hnd*      hnd_InOut, 
+        void*           data_In);
+
+    result
+    Array_PushBack(
+        array_hnd*      hnd_InOut,
+        void*           data_In);
+
+    result
+    Array_Pop(
+        array_hnd       hnd_In, 
+        void*           data_Out);
+
+    result
+    Array_PopBack(
+        array_hnd       hnd_In, 
+        void*           data_Out);
+
+    result
+    Array_Insert(
+        array_hnd       hnd_In,
+        uint32          element_In,
+        void*           data_In);
+
+    result
+    Array_Remove(
+        array_hnd       hnd_In,
+        uint32          element_In);
+
+    result
+    Array_Count(
+        array_hnd       hnd_In,
+        uint32*         count_Out);
+
+    result
+    Array_Length(
+        array_hnd       hnd_In,
+        uint32*         len_Out);
+
+    result
+    Array_Size(
+        array_hnd       hnd_In,
+        uint64*         size_Out);
+
+    result
+    Array_Stride(
+        array_hnd       hnd_In,
+        uint32*         stride_Out);
 #endif // USE_MEM_ARRAY
 
 #endif // MEM_HEADERS_H

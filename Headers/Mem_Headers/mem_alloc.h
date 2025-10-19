@@ -243,6 +243,7 @@ l_mem_realloc(
         return MEM_NOALLOC;
 
     l_mem_copy(blockOld, blockNew, ((size_In < sizeOld) ? size_In : sizeOld));
+    l_AllocHead = (blockOld == l_AllocHead) ? blockNew : l_AllocHead;
     DBG(Free(blockOld));
         
     if(blockNew->pPrev) (blockNew->pPrev)->pNext = blockNew;
