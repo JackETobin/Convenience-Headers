@@ -1,3 +1,5 @@
+// TODO: Set up errors and input checks.
+// TODO: Hook malloc in case this needs to stand up by itself.
 #ifndef MEM_ARRAY_H
 #define MEM_ARRAY_H
 
@@ -38,7 +40,6 @@ typedef struct Array_St {
     uint32      stride;
     uint64      len;
     uint64      max;
-    uint64      size;
 #if defined(USE_MEM_POOL) || defined(USE_MEM_ALL)
     res_hnd     res;
 #endif
@@ -56,10 +57,11 @@ typedef void*                   array_hnd;
     typedef struct Designated_Pool_St {
         pool_hnd    def;
         pool_hnd    des;
+        uint32      count;
         uint8       set;
     } des_pool;
 
-    persist des_pool l_DesPool = { 0, 0, DES_POOL_NONE };
+    persist des_pool l_DesPool = { 0, 0, 0, DES_POOL_NONE };
     
     internal result
     l_array_alloc(
@@ -119,7 +121,7 @@ typedef void*                   array_hnd;
     _Array_DesignatePool(
         pool_hnd    poolHnd_In)
     {
-        l_DesPool = (des_pool){ l_DesPool.def, poolHnd_In, DES_POOL_MANUAL };
+        l_DesPool = (des_pool){ l_DesPool.def, poolHnd_In, l_DesPool.count, DES_POOL_MANUAL };
         return ARRAY_SUCCESS;
     };
 #else
@@ -130,14 +132,14 @@ typedef void*                   array_hnd;
 #endif
 
 result
-Array_Build(
+_Array_Build(
     uint32          stride_In, 
     uint32          count_In, 
     array_hnd*      hnd_Out)
 {
     array* new = null;
     DBG(l_array_alloc(stride_In * count_In, &new));
-    new->len = new->size = 0;
+    new->len = 0;
     new->max = count_In;
     new->stride = stride_In;
 
@@ -146,12 +148,12 @@ Array_Build(
 };
 
 result
-Array_Destroy(
+_Array_Destroy(
     array_hnd*      hnd_InOut)
 { return l_array_free(hnd_InOut); };
 
 result
-Array_Push(
+_Array_Push(
     array_hnd*      hnd_InOut, 
     void*           data_In)
 {
@@ -172,7 +174,7 @@ Array_Push(
 };
 
 result
-Array_PushBack(
+_Array_PushBack(
     array_hnd*      hnd_InOut,
     void*           data_In)
 {
@@ -191,44 +193,113 @@ Array_PushBack(
 };
 
 result
-Array_Pop(
+_Array_Pop(
     array_hnd       hnd_In, 
-    void*           data_Out);
+    void*           data_Out)
+{
+    array* tar = hnd_In - sizeof(array);
+    uint8* hnd = (uint8*)hnd_In;
+    for(uint64 i = 0; i < tar->stride; i++)
+        *((uint8*)data_Out + i) = *(hnd + i);
+
+    uint8* lim = hnd + (tar->len * tar->stride);
+    for(; hnd < lim; hnd++)
+        *hnd = *(hnd + tar->stride);
+
+    uint8* back = lim - tar->stride;
+    for(; back < lim; back++)
+        *back = 0;
+    
+    tar->len--;
+    return ARRAY_SUCCESS;
+}
 
 result
-Array_PopBack(
+_Array_PopBack(
     array_hnd       hnd_In, 
-    void*           data_Out);
+    void*           data_Out)
+{
+    array* tar = hnd_In - sizeof(array);
+    uint64 lim = tar->len * tar->stride;
+    uint64 back = lim - tar->stride;
+    for(; back < lim; back++)
+    {
+        *((uint8*)data_Out + back) = *((uint8*)hnd_In + back);
+        *((uint8*)hnd_In + back) = 0;
+    }
+    tar->len--;
+    return ARRAY_SUCCESS;
+}
 
 result
-Array_Insert(
-    array_hnd       hnd_In,
+_Array_Insert(
+    array_hnd*      hnd_InOut,
     uint32          element_In,
-    void*           data_In);
+    void*           data_In)
+{
+    array* tar = *hnd_InOut - sizeof(array);
+    if(tar->len >= tar->max)
+    {
+        l_array_realloc(tar->max * (tar->stride * 1.5), &tar);
+        *hnd_InOut = (uint8*)tar + sizeof(array);
+    }
+    uint8* hnd = (uint8*)*hnd_InOut;
+    uint8* lim = hnd + (element_In * tar->stride);
+    for(uint8* i = hnd + (tar->len * tar->stride); i >= lim; i--)
+        *(i + tar->stride) = *i;
+    for(uint32 i = 0; i < tar->stride; i++)
+        *(lim + i) = *((uint8*)data_In + i);
+    
+    tar->len++;
+    return ARRAY_SUCCESS;
+}
 
 result
-Array_Remove(
+_Array_Remove(
     array_hnd       hnd_In,
-    uint32          element_In);
+    uint32          element_In)
+{
+    array* tar = hnd_In - sizeof(array);
+    uint8* lim = (uint8*)hnd_In + (tar->len * tar->stride);
+    for(uint8* i = (uint8*)hnd_In + (element_In * tar->stride); i < lim; i++)
+        *i = *(i + tar->stride);
+
+    uint8* back = lim - tar->stride;
+    for(; back < lim; back++)
+        *back = 0;
+    
+    tar->len--;
+    return ARRAY_SUCCESS;
+}
 
 result
-Array_Count(
+_Array_Length(
     array_hnd       hnd_In,
-    uint32*         count_Out);
+    uint32*         len_Out)
+{
+    array* tar = hnd_In - sizeof(array);
+    *len_Out = tar->len;
+    return ARRAY_SUCCESS;
+}
 
 result
-Array_Length(
+_Array_Size(
     array_hnd       hnd_In,
-    uint32*         len_Out);
+    uint64*         size_Out)
+{
+    array* tar = hnd_In - sizeof(array);
+    *size_Out = tar->len * tar->stride;
+    return ARRAY_SUCCESS;
+}
 
 result
-Array_Size(
+_Array_Stride(
     array_hnd       hnd_In,
-    uint64*         size_Out);
-
-result
-Array_Stride(
-    array_hnd       hnd_In,
-    uint32*         stride_Out);
+    uint32*         stride_Out)
+{
+    array* tar = hnd_In - sizeof(array);
+    *stride_Out = tar->stride;
+    return ARRAY_SUCCESS;
+}
 
 #endif // MEM_ARRAY_H

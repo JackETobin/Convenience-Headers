@@ -14,9 +14,6 @@
  * mem_headers.h. Each header file can be used piecewise, but the debugging functionality will be
  * limited should you request a debug report. As of right now the debug report prints to terminal.
  */
-
- // TODO: Setup wrappers for string functions.
- // TODO: Setup wrappers for array functions.
 #ifndef MEM_HEADERS_H
 #define MEM_HEADERS_H
 
@@ -209,6 +206,7 @@
         Mem_DBG(_Pool_Modify(resHnd_In, size_In))
 
 #endif // USE_MEM_POOL
+ // TODO: Setup wrappers for string functions.
 #if defined(USE_MEM_STRING) || defined(USE_MEM_ALL)
     #include "Mem_Headers/mem_string.h"
 
@@ -237,69 +235,43 @@
         uint32          buffSize_In, 
         char*           str_Out);
 #endif
+// TODO: Write documentation for the array functions, and get them into the array header.
 #if defined(USE_MEM_ARRAY) || defined(USE_MEM_ALL)
     #include "Mem_Headers/mem_array.h"
 
-    result
-    Array_Build(
-        uint32          stride_In, 
-        uint32          count_In, 
-        array_hnd*      hnd_Out);
+    #define Array_Build(stride_In, count_In, hnd_Out) \
+        Mem_DBG(_Array_Build(stride_In, count_In, &hnd_Out))
 
-    result
-    Array_Destroy(
-        array_hnd*      hnd_InOut);
+    #define Array_Destroy(hnd_In) \
+        Mem_DBG(_Array_Destroy(&hnd_In))
+        
+    #define Array_Push(hnd_InOut, data_In) \
+        Mem_DBG(_Array_Push(&hnd_InOut, data_In))
+        
+    #define Array_PushBack(hnd_InOut, data_In) \
+        Mem_DBG(_Array_PushBack(&hnd_InOut, data_In))
+        
+    #define Array_Pop(hnd_In, data_Out) \
+        Mem_DBG(_Array_Pop(hnd_In, data_Out))
+        
+    #define Array_PopBack(hnd_In, data_Out) \
+        Mem_DBG(_Array_PopBack(hnd_In, data_Out))
 
-    result
-    Array_Push(
-        array_hnd*      hnd_InOut, 
-        void*           data_In);
+    #define Array_Insert(hnd_In, element_In, data_In) \
+        Mem_DBG(_Array_Insert(hnd_In, element_In, data_In))
+        
+    #define Array_Remove(hnd_In, element_In) \
+        Mem_DBG(_Array_Remove(hnd_In, element_In))
+        
+    #define Array_Length(hnd_In, len_Out) \
+        Mem_DBG(_Array_Length(hnd_In, len_Out))
+        
+    #define Array_Size(hnd_In, size_Out) \
+        Mem_DBG(_Array_Size(hnd_In, size_Out))
+        
+    #define Array_Stride(hnd_In, stride_Out) \
+        Mem_DNG(_Array_Stride(hnd_In, stride_Out))
 
-    result
-    Array_PushBack(
-        array_hnd*      hnd_InOut,
-        void*           data_In);
-
-    result
-    Array_Pop(
-        array_hnd       hnd_In, 
-        void*           data_Out);
-
-    result
-    Array_PopBack(
-        array_hnd       hnd_In, 
-        void*           data_Out);
-
-    result
-    Array_Insert(
-        array_hnd       hnd_In,
-        uint32          element_In,
-        void*           data_In);
-
-    result
-    Array_Remove(
-        array_hnd       hnd_In,
-        uint32          element_In);
-
-    result
-    Array_Count(
-        array_hnd       hnd_In,
-        uint32*         count_Out);
-
-    result
-    Array_Length(
-        array_hnd       hnd_In,
-        uint32*         len_Out);
-
-    result
-    Array_Size(
-        array_hnd       hnd_In,
-        uint64*         size_Out);
-
-    result
-    Array_Stride(
-        array_hnd       hnd_In,
-        uint32*         stride_Out);
 #endif // USE_MEM_ARRAY
 
 #endif // MEM_HEADERS_H
