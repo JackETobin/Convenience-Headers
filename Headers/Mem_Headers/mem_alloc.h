@@ -83,8 +83,26 @@ typedef const void**        p_mem;
     #define Free(mem)                   Plat_Virtual_Free(0, (p_mem)&mem)
 #else
     #include<stdlib.h>
-    #define Malloc(size_In, mem_Out)    mem_Out = malloc(size_In)
-    #define Free(mem)                   free(mem)
+    internal result
+    l_malloc(
+        uint64      size_In, 
+        void**      mem_Out)
+    {
+        void* new = malloc(size_In);
+        if(new)
+        {
+            *mem_Out = new;
+            return MEM_SUCCESS;
+        }
+        return MEM_NOALLOC;
+    }
+    #define Malloc(size_In, mem_Out)    l_malloc(size_In, (void**)&mem_Out)
+
+    internal result
+    l_free(
+        void*       mem_In)
+    { free(mem_In); return MEM_SUCCESS; }
+    #define Free(mem)                   l_free((void*)mem)
 #endif // PLATFORM_H
 
 #define MEM_TAG_SIZE 48

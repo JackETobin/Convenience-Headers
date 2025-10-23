@@ -1,5 +1,4 @@
 // TODO: Set up errors and input checks.
-// TODO: Hook malloc in case this needs to stand up by itself.
 #ifndef MEM_ARRAY_H
 #define MEM_ARRAY_H
 
@@ -34,8 +33,6 @@
     #define DBG(func) func
 #endif // USE_MEM_DEBUG
 
-#define USE_MEM_POOL
-
 typedef struct Array_St {
     uint32      stride;
     uint64      len;
@@ -57,11 +54,10 @@ typedef void*                   array_hnd;
     typedef struct Designated_Pool_St {
         pool_hnd    def;
         pool_hnd    des;
-        uint32      count;
         uint8       set;
     } des_pool;
 
-    persist des_pool l_DesPool = { 0, 0, 0, DES_POOL_NONE };
+    persist des_pool l_DesPool = { 0, 0, DES_POOL_NONE };
     
     internal result
     l_array_alloc(
@@ -80,28 +76,29 @@ typedef void*                   array_hnd;
                 return ARRAY_NOALLOC;
             l_DesPool.set = DES_POOL_DEFAULT;
         }
-        array* target = null;
+        array* new = null;
         pool_hnd pool = (l_DesPool.set == DES_POOL_MANUAL) ? 
             l_DesPool.des : l_DesPool.def;
         if(DBG(_Pool_Reserve_At(size_In, pool, &res) != POOL_SUCCESS))
             return ARRAY_NOALLOC;
-        if(DBG(_Pool_Retrieve(res, (void**)&target) != POOL_SUCCESS))
+        if(DBG(_Pool_Retrieve(res, (void**)&new) != POOL_SUCCESS))
             return ARRAY_NOALLOC;
-        target->res = res;
-        *array_Out = target;
+        new->res = res;
+        *array_Out = new;
         return ARRAY_SUCCESS;
     };
 
     internal result
     l_array_realloc(
-        uint64 size_In, 
         array** array_InOut)
     {
-        size_In += sizeof(array);
-        array* target = *array_InOut;
-        if(DBG(_Pool_Modify(&target->res, size_In)) != POOL_SUCCESS)
+        array* tar = *array_InOut;
+        uint64 max = (tar->max) ? tar->max * 1.75 : 6;
+        uint64 size = (max * tar->stride) + sizeof(array);
+        if(DBG(_Pool_Modify(&tar->res, size)) != POOL_SUCCESS)
             return ARRAY_NORESIZE;
-        if(DBG(_Pool_Retrieve(target->res, (void**)array_InOut) != POOL_SUCCESS))
+        tar->max = max;
+        if(DBG(_Pool_Retrieve(tar->res, (void**)array_InOut) != POOL_SUCCESS))
             return ARRAY_NOALLOC;
         return ARRAY_SUCCESS;
     }
@@ -121,14 +118,51 @@ typedef void*                   array_hnd;
     _Array_DesignatePool(
         pool_hnd    poolHnd_In)
     {
-        l_DesPool = (des_pool){ l_DesPool.def, poolHnd_In, l_DesPool.count, DES_POOL_MANUAL };
+        l_DesPool = (des_pool){ l_DesPool.def, poolHnd_In, DES_POOL_MANUAL };
         return ARRAY_SUCCESS;
     };
 #else
     #include "stdlib.h"
-    #define Array_Alloc()       malloc()
-    #define Array_Free()        free()
-    #define Array_Realloc()     realloc()
+
+    internal result
+    l_array_alloc(
+        uint64      size_In,
+        array**      array_Out)
+    {
+        size_In += sizeof(array);
+        array* new = malloc(size_In);
+        if(!new)
+            return ARRAY_NOALLOC;
+        *array_Out = new;
+        return ARRAY_SUCCESS;
+    }
+
+    internal result
+    l_array_realloc(
+        array** array_InOut)
+    {
+        array* tar = *array_InOut;
+        uint64 max = (tar->max) ? tar->max * 1.75 : 6;
+        uint64 size = (max * tar->stride) + sizeof(array);
+        array* new = realloc(*array_InOut, size);
+        if(new)
+        {
+            new->max = max;
+            *array_InOut = new;
+            return ARRAY_SUCCESS;
+        }
+        return ARRAY_NORESIZE;
+    }
+
+    internal result
+    l_array_free(
+        array_hnd*  data_In)
+    {
+        void* toFree = *data_In - sizeof(array);
+        free(toFree);
+        *data_In = null;
+        return ARRAY_SUCCESS;
+    }
 #endif
 
 result
@@ -138,13 +172,15 @@ _Array_Build(
     array_hnd*      hnd_Out)
 {
     array* new = null;
-    DBG(l_array_alloc(stride_In * count_In, &new));
+    result res = DBG(l_array_alloc(stride_In * count_In, &new));
+    if(res != ARRAY_SUCCESS)
+        return res;
     new->len = 0;
     new->max = count_In;
     new->stride = stride_In;
 
     *hnd_Out = (void*)new + sizeof(array);
-    return ARRAY_SUCCESS;
+    return res;
 };
 
 result
@@ -160,11 +196,13 @@ _Array_Push(
     array* tar = *hnd_InOut - sizeof(array);
     if(tar->len >= tar->max)
     {
-        l_array_realloc(tar->max * (tar->stride * 1.5), &tar);
+        result res = l_array_realloc(&tar);
+        if(res != ARRAY_SUCCESS)
+            return res;
         *hnd_InOut = (uint8*)tar + sizeof(array);
     }
     array_hnd hnd = *hnd_InOut;
-    for(uint8* i = hnd + (tar->len * tar->stride); i >= (uint8*)hnd; i--)
+    for(uint8* i = hnd + (tar->len * tar->stride) - 1; i >= (uint8*)hnd; i--)
         *(i + tar->stride) = *i;
     for(uint32 i = 0; i < tar->stride; i++)
         *((uint8*)hnd + i) = *((uint8*)data_In + i);
@@ -181,7 +219,9 @@ _Array_PushBack(
     array* tar = *hnd_InOut - sizeof(array);
     if(tar->len >= tar->max)
     {
-        l_array_realloc(tar->max * (tar->stride * 1.5), &tar);
+        result res = l_array_realloc(&tar);
+        if(res != ARRAY_SUCCESS)
+            return res;
         *hnd_InOut = (uint8*)tar + sizeof(array);
     }
     uint8* dst = *(uint8**)hnd_InOut + (tar->stride * tar->len);
@@ -240,7 +280,9 @@ _Array_Insert(
     array* tar = *hnd_InOut - sizeof(array);
     if(tar->len >= tar->max)
     {
-        l_array_realloc(tar->max * (tar->stride * 1.5), &tar);
+        result res = l_array_realloc(&tar);
+        if(res != ARRAY_SUCCESS)
+            return res;
         *hnd_InOut = (uint8*)tar + sizeof(array);
     }
     uint8* hnd = (uint8*)*hnd_InOut;
@@ -275,7 +317,7 @@ _Array_Remove(
 result
 _Array_Length(
     array_hnd       hnd_In,
-    uint32*         len_Out)
+    uint64*         len_Out)
 {
     array* tar = hnd_In - sizeof(array);
     *len_Out = tar->len;
