@@ -1,5 +1,4 @@
 // TODO: Write the documentation including the possible define declarations.
-// TODO: Hook up a debug mode for magic number intertion so that we can do res integrity checks.
 // TODO: Hook up a res_clear function that clears released data in debug mode -> clear to magic number.
 /*
  * USE_MEM_DEBUG
@@ -8,6 +7,28 @@
  */
 #ifndef MEM_POOL_H
 #define MEM_POOL_H
+
+#define POOL_ALIGN                      8
+#define POOL_SECTION_SIZE               64
+#define RES_MIN_SIZE                    3
+#define POOL_VOID_DEFAULT               12
+
+#define POOL_STATE_READY                (uint16)0X01
+#define POOL_STATE_FREED                (uint16)0X02
+#define POOL_STATE_STATIC               (uint16)0X04
+#define POOL_STATE_RESIZE               (uint16)0X08
+#define POOL_STATE_DYNAMIC              (uint16)0X10
+
+#define RES_STATUS_FAULT                (uint32)0X00
+#define RES_STATUS_ACTIVE               (uint32)0X01
+#define RES_STATUS_FREE                 (uint32)0X02
+
+#define RES_HND_ASSEMBLE(r, p, hnd)     (hnd |= (r << 16) | p)
+#define RES_HND_OFFSET(r, hnd)          (r = (hnd >> 16))
+#define RES_HND_POOL(p, hnd)            (p = (uint16)hnd)
+
+#define RES_SIZE_ALIGNTOSEC(align)      (align * sizeof(uint32)) / POOL_SECTION_SIZE
+#define RES_SIZE_SECTOALIGN(sec)        (sec * POOL_SECTION_SIZE) / sizeof(uint32)
 
 #if !defined(MEM_TYPES_H)
     #define null                ((void*)0)
@@ -22,6 +43,7 @@
     typedef double              float64;
     typedef uint8               result;
 #endif // USE_MEM_TYPES
+
 #if !defined(MEM_DEFINES_H)
     #define persist         static
     #define internal        static
@@ -47,16 +69,15 @@
     #define POOL_RESNOFIT   (result)0X18 // Reservatioin isn't large enough, data has been truncated.
     #define POOL_INVOFFST   (result)0X19 // Invalid buffer offset on write attempt.
     #define POOL_RESFAULT   (result)0x1A // Unable to obtain the reservation.
-    #define POOL_FAILURE    (result)0X1B // Memory manager critical failure.
+    #define POOL_RESIZE     (result)0X1B // Memory manager critical failure.
 #endif // MEM_DEFINES_H
+
 #if defined(USE_MEM_DEBUG) || defined(USE_MEM_ALL)
     #include "mem_debug.h"
     #define DBG(func) _Debug_Catch(func, #func, line, file)
 #else
     #define DBG(func) func
 #endif // USE_MEM_DEBUG
-
-#define POOL_ALIGN 8
 
 #if defined(USE_MEM_ALLOC) || defined (USE_MEM_ALL)
     #include "mem_alloc.h"
@@ -72,45 +93,19 @@
     #define Pool_Free(mem_In)                    free(mem_In)
 #endif // MEM_ALLOC_H || CUSTOM_ALLOCATOR
 
-#define MEM_ASSERT(x)       x
-#define POOL_SECTION_SIZE   64
-
-#define POOL_TOP(t) (void*)((void*)t + sizeof(*t))
-
-#define RES_MIN_SIZE                    3
-
 #if defined(USE_MEM_DEBUG) || defined(USE_MEM_ALL)
-#define RES_META_SIZE                   (4 * sizeof(uint32))
-    #define RES_MAGNUM 0
-    #define DEB_MAGNUM 0XCDCDCDCDU
-    #define RES_STATUS 1
-    #define RES_SIZE 2
-    #define RES_DATA 3
+    #define RES_META_SIZE                   (4 * sizeof(uint32))
+    #define DEB_MAGNUM                      0XCDCDCDCDU
+    #define RES_MAGNUM                      0
+    #define RES_STATUS                      1
+    #define RES_SIZE                        2
+    #define RES_DATA                        3
 #else
-#define RES_META_SIZE                   (2 * sizeof(uint32))
-    #define RES_STATUS 0
-    #define RES_SIZE 1
-    #define RES_DATA 2
+    #define RES_META_SIZE                   (2 * sizeof(uint32))
+    #define RES_STATUS                      0
+    #define RES_SIZE                        1
+    #define RES_DATA                        2
 #endif // USE_MEM_DEBUG
-
-#define RES_HND_ASSEMBLE(r, p, hnd)     (hnd |= (r << 16) | p)
-#define RES_HND_OFFSET(r, hnd)          (r = (hnd >> 16))
-#define RES_HND_POOL(p, hnd)            (p = (uint16)hnd)
-
-#define RES_SIZE_ALIGNTOSEC(align) (align * sizeof(uint32)) / POOL_SECTION_SIZE
-#define RES_SIZE_SECTOALIGN(sec) (sec * POOL_SECTION_SIZE) / sizeof(uint32)
-
-#define POOL_VOID_DEFAULT 12
-
-#define POOL_STATE_READY    (uint16)0X01
-#define POOL_STATE_FREED    (uint16)0X02
-#define POOL_STATE_STATIC   (uint16)0X04
-#define POOL_STATE_RESIZE   (uint16)0X08
-#define POOL_STATE_DYNAMIC  (uint16)0X10
-
-#define RES_STATUS_FAULT    (uint32)0X00
-#define RES_STATUS_ACTIVE   (uint32)0X01
-#define RES_STATUS_FREE     (uint32)0X02
 
 typedef uint16      pool_hnd;
 typedef uint64      res_hnd;
@@ -196,7 +191,10 @@ l_pool_obtainRes(
 }
 
 internal uint64
-l_pool_setResMeta(uint32* res_In, uint32 status_In, uint32 size_In)
+l_pool_setResMeta(
+    uint32*         res_In, 
+    uint32          status_In, 
+    uint32          size_In)
 {
     uint64 sizeAlign = RES_SIZE_SECTOALIGN(size_In);
     if(!sizeAlign)
@@ -278,12 +276,12 @@ _Pool_Build(
     size_In += (2 * POOL_SECTION_SIZE) - (size_In % POOL_SECTION_SIZE);
     pool* new = null;
     rel_entry* bucket = null;
-    MEM_ASSERT(DBG(Pool_Alloc(size_In, tag_In, new)));
-    MEM_ASSERT(DBG(Pool_Alloc((sizeof(*bucket) * POOL_VOID_DEFAULT), tag_In, bucket)));
+    DBG(Pool_Alloc(size_In, tag_In, new));
+    DBG(Pool_Alloc((sizeof(*bucket) * POOL_VOID_DEFAULT), tag_In, bucket));
     if(!new || !bucket) 
     {
-        if(new) MEM_ASSERT(Pool_Free(new));
-        if(bucket) MEM_ASSERT(Pool_Free(bucket));
+        if(new) Pool_Free(new);
+        if(bucket) Pool_Free(bucket);
         return POOL_NOBUILD;
     }
     uint32 end = size_In / POOL_SECTION_SIZE;
@@ -319,8 +317,8 @@ _Pool_Destroy(
     }
     if(target->state == POOL_STATE_FREED) 
         return POOL_DBLFREE;
-    MEM_ASSERT(DBG(Pool_Free(target->released)));
-    MEM_ASSERT(DBG(Pool_Realloc(sizeof(pool), target)));
+    DBG(Pool_Free(target->released));
+    DBG(Pool_Realloc(sizeof(pool), target));
     next->pPrev = (next != target) ? target : null;
     target->state = POOL_STATE_FREED;
     return POOL_SUCCESS;
@@ -355,20 +353,22 @@ _Pool_Resize(
 {
     if(!l_PoolHead || poolHnd_In > l_PoolHead->hnd) 
         return (!l_PoolHead) ? POOL_NOPOOL : POOL_INVPLHND;
-    pool* target = l_PoolHead;
+    pool* top = l_PoolHead;
     pool* next = l_PoolHead;
-    while(poolHnd_In != target->hnd)
+    while(poolHnd_In != l_PoolHead->hnd)
     {
-        target = target->pPrev;
-        next = (poolHnd_In != target->hnd) ? next->pPrev : next;
+        l_PoolHead = l_PoolHead->pPrev;
+        next = (poolHnd_In != l_PoolHead->hnd) ? next->pPrev : next;
     }
-    if(target->state & POOL_STATE_FREED || target->state & POOL_STATE_STATIC) 
-        return (target->state & POOL_STATE_FREED) ? POOL_NOACTIVE : POOL_NORESIZE;
+    uint16 state = l_PoolHead->state;
+    if(state & POOL_STATE_FREED || state & POOL_STATE_STATIC) 
+        return (state & POOL_STATE_FREED) ? POOL_NOACTIVE : POOL_NORESIZE;
 
     size_In += POOL_SECTION_SIZE - (size_In % POOL_SECTION_SIZE);
-    MEM_ASSERT(DBG(Pool_Realloc(sizeof(pool) + size_In, target)));
-    next->pPrev = target;
-    target->oEnd = size_In / POOL_SECTION_SIZE;
+    DBG(Pool_Realloc(sizeof(pool) + size_In, l_PoolHead));
+    next->pPrev = (next->hnd == l_PoolHead->hnd) ? next->pPrev : l_PoolHead;
+    l_PoolHead->oEnd = size_In / POOL_SECTION_SIZE;
+    l_PoolHead = (l_PoolHead->hnd == top->hnd) ? l_PoolHead : top;
     return POOL_SUCCESS;
 };
 
@@ -452,11 +452,12 @@ _Pool_Reserve_At(
         return POOL_INVPLHND;
 
     uint32 offset = l_pool_reserve(target, size_In);
+    result resizeFlag = 0;
     if(!offset && (target->state & POOL_STATE_DYNAMIC))
     {
         pool_hnd hnd = target->hnd;
-        uint64 poolSize = target->oEnd * POOL_SECTION_SIZE;
-        DBG(_Pool_Resize(hnd, (poolSize * 1.5) + (size_In * POOL_SECTION_SIZE)));
+        uint64 newSize = (uint64)(target->oEnd * 1.75 + size_In) * POOL_SECTION_SIZE;
+        resizeFlag = DBG(_Pool_Resize(hnd, newSize));
         target = l_PoolHead;
         while(target->hnd != hnd && target)
             target = target->pPrev;
@@ -467,10 +468,9 @@ _Pool_Reserve_At(
 
     *resHnd_Out = 0;
     RES_HND_ASSEMBLE(offset, target->hnd, *resHnd_Out);
-    return POOL_SUCCESS;
+    return (resizeFlag) ? POOL_RESIZE : POOL_SUCCESS;
 }
 
-// TODO: Fix the fucked up void counter.
 /* 
  * FUNCTION: Releases a reservation, allowing for reallocation and preventing further writing.
  *  - input  - resHnd_In: a handle to the designated reservation intended to be released.
@@ -490,10 +490,10 @@ _Pool_Release(
     if(resCheck != POOL_SUCCESS)
         return resCheck;
     
-    if(res[0] == RES_STATUS_FREE)
+    if(res[RES_STATUS] == RES_STATUS_FREE)
         return POOL_DBLFREE;
 
-    rel_entry released = { res[1], offset};
+    rel_entry released = { res[RES_SIZE], offset};
     rel_entry* relList = target->released;
     uint32 relIndex = target->relCount;
     while(relIndex)
@@ -562,6 +562,8 @@ _Pool_Retrieve(
     return POOL_SUCCESS;
 };
 
+// TODO: Set up debug on the status check. Leave the status unchecked in release, live on the edge.
+// TODO: Move the nuts and bolts of the data write to an internal function that we can call without the checks.
 /* 
  * FUNCTION: Copies data into a pool reservation.
  *  - input  - resHnd_In: a handle to the reservation designated to be written to.
@@ -585,10 +587,10 @@ _Pool_Write(
     if(resCheck != POOL_SUCCESS)
         return resCheck;
 
-    if(res[0] == RES_STATUS_FREE)
+    if(res[RES_STATUS] == RES_STATUS_FREE)
         return POOL_RESFREE;
     
-    uint64 resSize = (res[1] * POOL_SECTION_SIZE) - RES_META_SIZE;
+    uint64 resSize = (res[RES_SIZE] * POOL_SECTION_SIZE) - RES_META_SIZE;
     if(offset_In >= resSize)
         return POOL_INVOFFST;
     uint64 lim = (dataSize_In) ? (offset_In + dataSize_In) : resSize;
@@ -599,7 +601,7 @@ _Pool_Write(
         msgFit = POOL_RESNOFIT;
     }
     uint8* src = (uint8*)data_In;
-    uint8* dest = (uint8*)(res + 2);
+    uint8* dest = (uint8*)(res + RES_DATA);
     for(uint64 i = offset_In; i < lim; i++, src++)
         *(dest + i) = *src;
 
@@ -620,17 +622,23 @@ _Pool_Modify(
 {
     uint32* res = null;
     pool* target = null;
-    result resCheck = l_pool_obtainRes(*resHnd_InOut, &res, null, &target);
-    if(resCheck != POOL_SUCCESS)
-        return resCheck;
-
-    res_hnd newResHnd = 0;
-    result checkAll = _Pool_Reserve_At(size_In, target->hnd, &newResHnd);
+    result checkAll = l_pool_obtainRes(*resHnd_InOut, &res, null, &target);
     if(checkAll != POOL_SUCCESS)
         return checkAll;
 
-    uint64 range = res[1] * POOL_SECTION_SIZE;
-    checkAll = _Pool_Write(newResHnd, (void*)(res + 2), range, 0);
+    res_hnd newResHnd = 0;
+    checkAll = _Pool_Reserve_At(size_In, target->hnd, &newResHnd);
+    if(checkAll == POOL_RESIZE)
+    {
+        pool_hnd hnd = target->hnd;
+        for(target = l_PoolHead; target->hnd != hnd; target = target->pPrev);
+        checkAll = l_pool_obtainRes(*resHnd_InOut, &res, null, &target);
+    }
+    if(checkAll != POOL_SUCCESS)
+        return checkAll;
+
+    uint64 range = res[RES_SIZE] * POOL_SECTION_SIZE;
+    checkAll = _Pool_Write(newResHnd, (void*)(res + RES_DATA), range, 0);
     if(checkAll != POOL_SUCCESS)
         return checkAll;
 
@@ -639,7 +647,7 @@ _Pool_Modify(
         return checkAll;
 
     *resHnd_InOut = newResHnd;
-    return POOL_SUCCESS;
+    return checkAll;
 };
 
 #if !defined(MEM_HEADERS_H)

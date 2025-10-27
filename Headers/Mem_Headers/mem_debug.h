@@ -36,7 +36,7 @@ const char* l_ErrMsg[] = {
     "Reservation isn't large enough, data has been truncated.",
     "Invalid buffer offset on write attempt.",
     "Unable to obtain the reservation.",
-    "Memory pool critical failure.",
+    "Pool has been resized and a raw pointer update might be necessary.",
 
     // PLATFORM_H
     "Platform success.",

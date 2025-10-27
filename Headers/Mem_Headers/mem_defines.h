@@ -44,7 +44,7 @@
 #define POOL_RESNOFIT   (result)0X18 // Reservatioin isn't large enough, data has been truncated.
 #define POOL_INVOFFST   (result)0X19 // Invalid buffer offset on write attempt.
 #define POOL_RESFAULT   (result)0x1A // Unable to obtain the reservation.
-#define POOL_FAILURE    (result)0X1B // Memory manager critical failure.
+#define POOL_RESIZE     (result)0X1B // Pool has been resized and a raw pointer update might be necessary.
 
 // PLATFORM_H
 #define PLAT_SUCCESS (result)0X1C // Platform success.
