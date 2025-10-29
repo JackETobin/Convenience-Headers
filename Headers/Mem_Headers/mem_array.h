@@ -95,11 +95,19 @@ typedef void*                   array_hnd;
         array* tar = *array_InOut;
         uint64 max = (tar->max) ? tar->max * 1.75 : 6;
         uint64 size = (max * tar->stride) + sizeof(array);
-        if(DBG(_Pool_Modify(&tar->res, size)) != POOL_SUCCESS)
-            return ARRAY_NORESIZE;
-        tar->max = max;
-        if(DBG(_Pool_Retrieve(tar->res, (void**)array_InOut) != POOL_SUCCESS))
-            return ARRAY_NOALLOC;
+        uint64 container = 0;
+        DBG(_Pool_ResSize(tar->res, &container));
+        if(size <= container)
+        {
+            tar->max = (size == container) ? max : (container / tar->stride);
+        } else {
+            if(DBG(_Pool_Modify(&tar->res, size)) != POOL_SUCCESS)
+                return ARRAY_NORESIZE;
+            tar->max = max;
+            if(DBG(_Pool_Retrieve(tar->res, (void**)array_InOut) != POOL_SUCCESS))
+                return ARRAY_NOALLOC;
+            *array_InOut = tar;
+        }
         return ARRAY_SUCCESS;
     }
 

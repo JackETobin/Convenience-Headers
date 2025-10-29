@@ -177,7 +177,7 @@ l_pool_obtainRes(
 
     if(!target)
         return POOL_INVREHND;
-
+    
     uint32* res = (uint32*)((void*)target + (offset * POOL_SECTION_SIZE));
     if(res[0] == RES_STATUS_FAULT)
         return POOL_RESFAULT;
@@ -207,22 +207,34 @@ l_pool_setResMeta(
     return sizeAlign;
 }
 
+// internal result
+// l_pool_write(uint8* src_In, uint8* dst_In, uint64 range_In)
+// {
+//     for(uint8* lim = src_In + range_In; src_In < lim; src_In++, dst_In++)
+//         *dst_In = *src_In;
+//     return POOL_SUCCESS;
+// }
+
 internal uint32
 l_pool_reclaim(
     pool*           target_In, 
     uint32          adjustedSize_In)
 {
-    for(uint32 i = 0; i < target_In->relCount; i++)
+    uint32 offset = 0;
+    for(uint32 i = 0; i < target_In->relCount && !offset; i++)
         if(target_In->released[i].size >= adjustedSize_In)
         {
             if(target_In->released[i].size > adjustedSize_In + RES_MIN_SIZE)
             {
                 target_In->released[i].size -= adjustedSize_In;
-                return target_In->released[i].offset + target_In->released[i].size;
+                offset = target_In->released[i].offset + target_In->released[i].size;
             }
-            return target_In->released[i].offset;
+            offset = (!offset) ? target_In->released[i].offset : offset;
         }
-    return 0;
+    target_In->relCount -= (offset > 0);
+    if(offset > 200) 
+        offset++;
+    return offset;
 }
 
 internal uint32
@@ -233,7 +245,6 @@ l_pool_new(pool* target_In, uint32 adjustedSize_In)
     {
         offset = target_In->oData;
         target_In->oData += adjustedSize_In;
-        target_In->resCount++;
     }
     return offset;
 }
@@ -249,6 +260,7 @@ l_pool_reserve(
     {
         uint32* res = (void*)target_In + (offset * POOL_SECTION_SIZE);
         l_pool_setResMeta(res, RES_STATUS_ACTIVE, adjustedSize_In);
+        target_In->resCount++;
     }
     return offset;
 }
@@ -509,25 +521,28 @@ _Pool_Release(
     relList[relIndex] = (relIndex) ? relList[relIndex] : released;
     target->relCount++;
 
-    uint32 coalesce[] = { 0, 0, 0};
-    for(uint32 i = relIndex - 1; i < relIndex + 1; i++)
-        if(relList[i].offset + relList[i].size == relList[i + 1].offset)
+    // uint32 coalesce[] = { 0, 0, 0 };
+    for(uint32 i = relIndex + (relIndex > (target->relCount - 1)); i; i--)
+        if(relList[i - 1].offset + relList[i - 1].size == relList[i].offset)
         {
-            relList[i].size += relList[i + 1].size;
-            coalesce[0]++;
-            coalesce[coalesce[0]] = i + 1;
+            relList[i - 1].size += relList[i].size;
+            for(uint32 j = i; j < target->relCount; j++)
+                relList[j] = relList[j + 1];
+            target->relCount--;
+            // coalesce[0]++;
+            // coalesce[coalesce[0]] = i + 1;
         }
-    while(coalesce[0])
-    {
-        for(uint32 i = coalesce[coalesce[0]]; i < target->relCount; i++)
-            relList[i] = relList[i + 1];
-        target->relCount--;
-        coalesce[0]--;
-    }
+    // while(coalesce[0])
+    // {
+    //     for(uint32 i = coalesce[coalesce[0]]; i < target->relCount; i++)
+    //         relList[i] = relList[i + 1];
+    //     target->relCount--;
+    //     coalesce[0]--;
+    // }
     if(relList[target->relCount - 1].offset + relList[target->relCount - 1].size == target->oData)
     {
         target->oData -= relList[target->relCount - 1].size;
-        relList[target->relCount - 1] = (rel_entry){ 0 };
+        // relList[target->relCount - 1] = (rel_entry){ 0 };
         target->relCount--;
     }
     target->resCount--;
@@ -555,10 +570,10 @@ _Pool_Retrieve(
     if(resCheck != POOL_SUCCESS)
         return resCheck;
 
-    if(res[0] == RES_STATUS_FREE)
+    if(res[RES_STATUS] == RES_STATUS_FREE)
         return POOL_RESFREE;
 
-    *rawPtr_Out = (void*)(res + 2);
+    *rawPtr_Out = (void*)(res + RES_DATA);
     return POOL_SUCCESS;
 };
 
@@ -620,24 +635,33 @@ _Pool_Modify(
     res_hnd*        resHnd_InOut, 
     uint64          size_In)
 {
+    size_In += RES_META_SIZE;
+    size_In += POOL_SECTION_SIZE - (size_In % POOL_SECTION_SIZE);
+    size_In /= POOL_SECTION_SIZE;
+
     uint32* res = null;
     pool* target = null;
     result checkAll = l_pool_obtainRes(*resHnd_InOut, &res, null, &target);
     if(checkAll != POOL_SUCCESS)
         return checkAll;
 
-    res_hnd newResHnd = 0;
-    checkAll = _Pool_Reserve_At(size_In, target->hnd, &newResHnd);
-    if(checkAll == POOL_RESIZE)
+    uint32 offset = l_pool_reserve(target, size_In);
+    if(!offset && (target->state & POOL_STATE_DYNAMIC))
     {
         pool_hnd hnd = target->hnd;
-        for(target = l_PoolHead; target->hnd != hnd; target = target->pPrev);
-        checkAll = l_pool_obtainRes(*resHnd_InOut, &res, null, &target);
+        uint64 newSize = (uint64)(target->oEnd * 1.75 + size_In) * POOL_SECTION_SIZE;
+        DBG(_Pool_Resize(hnd, newSize));
+        target = l_PoolHead;
+        while(target->hnd != hnd && target)
+            target = target->pPrev;
+        offset = l_pool_reserve(target, size_In);
+        if(!offset)
+            return POOL_NOSPACE;
     }
-    if(checkAll != POOL_SUCCESS)
-        return checkAll;
+    res_hnd newResHnd = 0;
+    RES_HND_ASSEMBLE(offset, target->hnd, newResHnd);
 
-    uint64 range = res[RES_SIZE] * POOL_SECTION_SIZE;
+    uint64 range = (res[RES_SIZE] * POOL_SECTION_SIZE) - RES_META_SIZE;
     checkAll = _Pool_Write(newResHnd, (void*)(res + RES_DATA), range, 0);
     if(checkAll != POOL_SUCCESS)
         return checkAll;
@@ -649,6 +673,36 @@ _Pool_Modify(
     *resHnd_InOut = newResHnd;
     return checkAll;
 };
+
+result
+_Pool_Size(
+    pool_hnd        poolHnd_In,
+    uint64*         size_Out)
+{
+    if(!l_PoolHead)
+        return POOL_NOPOOL;
+
+    pool* target = l_PoolHead;
+    while(target->hnd != poolHnd_In && target)
+        target = target->pPrev;
+    if(!target)
+        return POOL_INVREHND;
+
+    *size_Out = (target->oEnd - 1) * POOL_SECTION_SIZE;
+    return POOL_SUCCESS;
+};
+
+result
+_Pool_ResSize(
+    res_hnd         resHnd_In,
+    uint64*         size_Out)
+{
+    uint32* res = null;
+    if(l_pool_obtainRes(resHnd_In, &res, null, null) != POOL_SUCCESS)
+        return POOL_INVREHND;
+    *size_Out = (res[RES_SIZE] * POOL_SECTION_SIZE) - RES_META_SIZE;
+    return POOL_SUCCESS;
+}
 
 #if !defined(MEM_HEADERS_H)
 
