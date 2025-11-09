@@ -1,0 +1,4 @@
+#ifndef VULKAN_COMPUTE_H
+#define VULKAN_COMPUTE_H
+
+#endif // VULKAN_COMPUTE_H

@@ -4,10 +4,8 @@
  * definitions:
  *  -   USE_MEM_HEADERS - Includes all mem headers as well as platform header located externally.
  *  -   USE_PLATFORM    - Includes "platform_h" located externally.
- *  -   USE_MEM_DEBUG   - Includes "mem_debug.h"
  *  -   USE_MEM_ALLOC   - Includes "mem_alloc.h"
  *  -   USE_MEM_POOL    - Includes "mem_pool.h"
- *  -   USE_MEM_STRING  - Includes "mem_string.h"
  *  -   USE_MEM_ARRAY   - Includes "mem_array.h"
  * 
  * All of the header files included here can be used independantly of one another and of 
@@ -17,66 +15,67 @@
 #ifndef MEM_HEADERS_H
 #define MEM_HEADERS_H
 
-#include "Mem_Headers/mem_defines.h"
-#include "Mem_Headers/mem_types.h"
-
 #if defined(USE_ALL) || defined(USE_MEM_HEADERS)
     #define USE_MEM_ALL
 #endif // USE_ALL
 
 #if defined(USE_PLATFORM) || defined(USE_MEM_ALL)
+    #define USE_PLATFORM_ALLOC 1
     #include "platform.h"
 #endif // USE_PLATFORM
 
-#if defined(USE_MEM_DEBUG) || defined(USE_MEM_ALL)
-    #include "Mem_Headers/mem_debug.h"
+#include "types.h"
+// #include "Mem_Headers/mem_defines.h"
 
-    #define Mem_DBG(func) \
+#if defined(MODE_DEBUG) || defined(USE_MEM_ALL)
+    #include "log.h"
+
+    #define DBG(func) \
         _Debug_Catch(func, #func, line, file)
 
     #define Mem_Debug_Report() \
         _Debug_Report()
 #else
-    #define Mem_DBG(func) func
+    #define DBG(func) func
 
     #define Mem_Debug_Report()
 
-#endif // USE_MEM_DEBUG
+#endif // MODE_DEBUG
 #if defined(USE_MEM_ALLOC) || defined(USE_MEM_ALL)
     #include "Mem_Headers/mem_alloc.h"
     
-    #define Mem_Alloc(size_In, tag_In, mem_Out) \
-        Mem_DBG(_Mem_Alloc(size_In, tag_In, mem_Out))
+    #define Mem_Alloc(size_InOut, tag_In, mem_Out) \
+        DBG(_Mem_Alloc(&size_InOut, tag_In, mem_Out))
     
-    #define Mem_Alloc_Allign(size_In, align_In, tag_In, mem_Out) \
-        Mem_DBG(_Mem_Alloc_Allign(size_In, align_In, tag_In, mem_Out))
+    #define Mem_Alloc_Allign(size_InOut, align_In, tag_In, mem_Out) \
+        DBG(_Mem_Alloc_Allign(&size_InOut, align_In, tag_In, mem_Out))
     
     #define Mem_Realloc(size_In, mem_InOut) \
-        Mem_DBG(_Mem_Realloc(size_In, mem_InOut))
+        DBG(_Mem_Realloc(size_In, mem_InOut))
     
     #define Mem_Free(mem_InOut) \
-        Mem_DBG(_Mem_Free(mem_InOut))
+        DBG(_Mem_Free(mem_InOut))
     
     #define Mem_BlockTag(mem_In, tag_Out) \
-        Mem_DBG(_Mem_BlockTag(mem_In, tag_Out))
+        DBG(_Mem_BlockTag(mem_In, tag_Out))
     
     #define Mem_Zero(mem_In, range_In) \
-        Mem_DBG(_Mem_Zero(mem_In, range_In))
+        DBG(_Mem_Zero(mem_In, range_In))
     
     #define Mem_CheckBounds(mem_In) \
-        Mem_DBG(_Mem_CheckBounds(mem_In))
+        DBG(_Mem_CheckBounds(mem_In))
     
     #define Mem_Next(mem_InOut) \
-        Mem_DBG(_Mem_Next(mem_InOut))
+        DBG(_Mem_Next(mem_InOut))
     
     #define Mem_Prev(mem_InOut) \
-        Mem_DBG(_Mem_Prev(mem_InOut))
+        DBG(_Mem_Prev(mem_InOut))
     
     #define Mem_ClearFree() \
-        Mem_DBG(_Mem_ClearFree())
+        DBG(_Mem_ClearFree())
     
     #define Mem_Kill() \
-        Mem_DBG(_Mem_Kill())
+        DBG(_Mem_Kill())
     
     #define Mem_BlockSize(mem_In) \
         _Mem_BlockSize(mem_In)
@@ -97,7 +96,7 @@
     * metadata, and second allocation for the free-list that can grow dynamically.
     */
     #define Pool_Build(size_In, tag_In, resize_In, poolHnd_Out) \
-        Mem_DBG(_Pool_Build(size_In, tag_In, resize_In, poolHnd_Out))
+        DBG(_Pool_Build(size_In, tag_In, resize_In, poolHnd_Out))
     
     /* 
     * FUNCTION: Destroys a designated memory pool.
@@ -108,7 +107,7 @@
     * remain unchanged.
     */
     #define Pool_Destroy(poolHnd_In) \
-        Mem_DBG(_Pool_Destroy(poolHnd_In))
+        DBG(_Pool_Destroy(poolHnd_In))
     
     /* 
     * FUNCTION: Frees all allocations associated with mem_pool.h
@@ -117,7 +116,7 @@
     * Nullifies the linked list used internally to access allocations.
     */
     #define Pool_Kill() \
-        Mem_DBG(_Pool_Kill())
+        DBG(_Pool_Kill())
     
     /* 
     * FUNCTION: Resizes a designated pool.
@@ -128,7 +127,7 @@
     * occur in the pool handle, as the pool's index is preserved.
     */
     #define Pool_Resize(poolHnd_In, size_In) \
-        Mem_DBG(_Pool_Resize(poolHnd_In, size_In))
+        DBG(_Pool_Resize(poolHnd_In, size_In))
     
     /* 
     * FUNCTION: Reserves space in a memory pool.
@@ -140,7 +139,7 @@
     * where reservations are made.
     */
     #define Pool_Reserve(size_In, resHnd_Out) \
-        Mem_DBG(_Pool_Reserve(size_In, resHnd_Out))
+        DBG(_Pool_Reserve(size_In, resHnd_Out))
     
     /*
     * FUNCTION: Reserves space in a memory pool.
@@ -153,7 +152,7 @@
     * another location should the designated pool be full.
     */
     #define Pool_Reserve_At(size_In, poolHnd_In, resHnd_Out) \
-        Mem_DBG(_Pool_Reserve_At(size_In, poolHnd_In, resHnd_Out))
+        DBG(_Pool_Reserve_At(size_In, poolHnd_In, resHnd_Out))
     
     /* 
     * FUNCTION: Releases a reservation, allowing for reallocation and preventing further writing.
@@ -163,7 +162,7 @@
     * and if possible, coalesced into adjacent released reservations.
     */
     #define Pool_Release(resHnd_In) \
-        Mem_DBG(_Pool_Release(resHnd_In))
+        DBG(_Pool_Release(resHnd_In))
     
     /* 
     * FUNCTION: Retrieves a raw pointer to a reservation's data.
@@ -176,7 +175,7 @@
     * much space is actually present.
     */
     #define Pool_Retrieve(resHnd_In, rawPtr_Out) \
-        Mem_DBG(_Pool_Retrieve(resHnd_In, rawPtr_Out))
+        DBG(_Pool_Retrieve(resHnd_In, rawPtr_Out))
     
     /* 
     * FUNCTION: Copies data into a pool reservation.
@@ -191,7 +190,7 @@
     * buffer be smaller than the reservation.
     */
     #define Pool_Write(resHnd_In, data_In, dataSize_In, offset_In) \
-        Mem_DBG(_Pool_Write(resHnd_In, data_In, dataSize_In, offset_In))
+        DBG(_Pool_Write(resHnd_In, data_In, dataSize_In, offset_In))
     
     /* 
     * FUNCTION: Modifies the size of a reservation.
@@ -203,38 +202,38 @@
     * provided.
     */
     #define Pool_Modify(resHnd_InOut, size_In) \
-        Mem_DBG(_Pool_Modify(resHnd_In, size_In))
+        DBG(_Pool_Modify(resHnd_In, size_In))
 
 #endif // USE_MEM_POOL
  // TODO: Setup wrappers for string functions.
-#if defined(USE_MEM_STRING) || defined(USE_MEM_ALL)
-    #include "Mem_Headers/mem_string.h"
-
-    result
-    _String_Itoa(
-        int64           int64_In, 
-        uint32          buffSize_In, 
-        char*           str_Out);
-
-    result
-    _String_TrimLeading(
-        char*           str_In,
-        uint32          buffSize_In,
-        char*           buff_Out);
-
-    result
-    _String_RemoveSpaces(
-        char*           str_In,
-        uint32          buffSize_In,
-        char*           buff_Out);
-
-    result
-    _String_Concat(
-        char*           strArray_In[], 
-        uint32          count_In, 
-        uint32          buffSize_In, 
-        char*           str_Out);
-#endif
+// #if defined(USE_MEM_STRING) || defined(USE_MEM_ALL)
+//     #include "Mem_Headers/mem_string.h"
+// 
+//     result
+//     _String_Itoa(
+//         int64           int64_In, 
+//         uint32          buffSize_In, 
+//         char*           str_Out);
+// 
+//     result
+//     _String_TrimLeading(
+//         char*           str_In,
+//         uint32          buffSize_In,
+//         char*           buff_Out);
+// 
+//     result
+//     _String_RemoveSpaces(
+//         char*           str_In,
+//         uint32          buffSize_In,
+//         char*           buff_Out);
+// 
+//     result
+//     _String_Concat(
+//         char*           strArray_In[], 
+//         uint32          count_In, 
+//         uint32          buffSize_In, 
+//         char*           str_Out);
+// #endif
 // TODO: Write documentation for the array functions, and get them into the array header.
 #if defined(USE_MEM_ARRAY) || defined(USE_MEM_ALL)
     #include "Mem_Headers/mem_array.h"
@@ -247,38 +246,41 @@
     #endif
 
     #define Array_Build(stride_In, count_In, hnd_Out) \
-        Mem_DBG(_Array_Build(stride_In, count_In, &hnd_Out))
+        DBG(_Array_Build(stride_In, count_In, &hnd_Out))
 
     #define Array_Destroy(hnd_In) \
-        Mem_DBG(_Array_Destroy(&hnd_In))
+        DBG(_Array_Destroy(&hnd_In))
         
     #define Array_Push(hnd_InOut, data_In) \
-        Mem_DBG(_Array_Push(&hnd_InOut, (void*)&data_In))
+        DBG(_Array_Push(&hnd_InOut, (void*)&data_In))
         
     #define Array_PushBack(hnd_InOut, data_In) \
-        Mem_DBG(_Array_PushBack(&hnd_InOut, (void*)&data_In))
+        DBG(_Array_PushBack(&hnd_InOut, (void*)&data_In))
         
     #define Array_Pop(hnd_In, data_Out) \
-        Mem_DBG(_Array_Pop(hnd_In, (void*)&data_Out))
+        DBG(_Array_Pop(hnd_In, (void*)&data_Out))
         
     #define Array_PopBack(hnd_In, data_Out) \
-        Mem_DBG(_Array_PopBack(hnd_In, (void*)&data_Out))
+        DBG(_Array_PopBack(hnd_In, (void*)&data_Out))
 
     #define Array_Insert(hnd_In, element_In, data_In) \
-        Mem_DBG(_Array_Insert(&hnd_In, element_In, (void*)&data_In))
+        DBG(_Array_Insert(&hnd_In, element_In, (void*)&data_In))
         
     #define Array_Remove(hnd_In, element_In) \
-        Mem_DBG(_Array_Remove(hnd_In, element_In))
+        DBG(_Array_Remove(hnd_In, element_In))
         
     #define Array_Length(hnd_In, len_Out) \
-        Mem_DBG(_Array_Length(hnd_In, &len_Out))
+        DBG(_Array_Length(hnd_In, &len_Out))
         
     #define Array_Size(hnd_In, size_Out) \
-        Mem_DBG(_Array_Size(hnd_In, &size_Out))
+        DBG(_Array_Size(hnd_In, &size_Out))
         
     #define Array_Stride(hnd_In, stride_Out) \
-        Mem_DBG(_Array_Stride(hnd_In, &stride_Out))
+        DBG(_Array_Stride(hnd_In, &stride_Out))
 
 #endif // USE_MEM_ARRAY
+#if defined(MODE_DEBUG)
+    #include "Mem_Headers/mem_debug.h"
+#endif // MODE_DEBUG
 
 #endif // MEM_HEADERS_H

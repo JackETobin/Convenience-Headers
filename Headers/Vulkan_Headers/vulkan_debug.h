@@ -1,0 +1,4 @@
+#ifndef VULKAN_DEBUG_H
+#define VULKAN_DEBUG_H
+
+#endif // VULKAN_DEBUG_H

@@ -2,7 +2,7 @@
 #ifndef MEM_ARRAY_H
 #define MEM_ARRAY_H
 
-#if !defined(MEM_TYPES_H)
+#if !defined(MEM_HEADERS_H) || !defined(PLATFORM_H)
     #define null                ((void*)0)
 
     typedef unsigned char       uint8;
@@ -15,23 +15,27 @@
 
     typedef uint8               result;
 #endif
-#if !defined(MEM_DEFINES_H)
+#if !defined(DEFINES_H)
     #define persist             static
     #define internal            static
-    // #define unused(x)           (void)(x)
+#endif // DEFINES_H
 
-    #define ARRAY_SUCCESS   (result)0X1C // array success.
-    #define ARRAY_NOALLOC   (result)0X1D // Unable to allocate space for the array.
-    #define ARRAY_NOFREE    (result)0X1E // An error ocurred while attempting to free the array.
-    #define ARRAY_NORESIZE  (result)0X1F // Array was unable to dynamically resize.
-    #define ARRAY_EMPTY     (result)0X20 // Array is empty.
-#endif
-#if defined(USE_MEM_DEBUG) || defined(USE_MEM_ALL)
-    #include "mem_debug.h"
-    #define DBG(func) _Debug_Catch(func, #func, line, file)
+#define ARRAY_SUCCESS       (result)0X03 // array success.
+#define ARRAY_NOALLOC       (result)0X2D // Unable to allocate space for the array.
+#define ARRAY_NOFREE        (result)0X2E // An error ocurred while attempting to free the array.
+#define ARRAY_NORESIZE      (result)0X2F // Array was unable to dynamically resize.
+#define ARRAY_EMPTY         (result)0X30 // Array is empty.
+
+#if defined(MODE_DEBUG)
+    #if !defined(MEM_HEADERS_H)
+        #include "../log.h"
+        #define DBG(func) _Debug_Catch(func, #func, line, file)
+    #endif // MEM_HEADERS_H
 #else
-    #define DBG(func) func
-#endif // USE_MEM_DEBUG
+    #if !defined(MEM_HEADERS_H)
+        #define DBG(func) func
+    #endif // MEM_HEADERS_H
+#endif // MODE_DEBUG
 
 typedef struct Array_St {
     uint32      stride;
@@ -79,7 +83,7 @@ typedef void*                   array_hnd;
         array* new = null;
         pool_hnd pool = (l_DesPool.set == DES_POOL_MANUAL) ? 
             l_DesPool.des : l_DesPool.def;
-        if(DBG(_Pool_Reserve_At(size_In, pool, &res) != POOL_SUCCESS))
+        if(DBG(_Pool_Reserve_At(size_In, pool, &res)) != POOL_SUCCESS)
             return ARRAY_NOALLOC;
         if(DBG(_Pool_Retrieve(res, (void**)&new) != POOL_SUCCESS))
             return ARRAY_NOALLOC;
@@ -106,7 +110,7 @@ typedef void*                   array_hnd;
             tar->max = max;
             if(DBG(_Pool_Retrieve(tar->res, (void**)array_InOut) != POOL_SUCCESS))
                 return ARRAY_NOALLOC;
-            *array_InOut = tar;
+            **array_InOut = *tar;
         }
         return ARRAY_SUCCESS;
     }
@@ -242,7 +246,7 @@ _Array_PushBack(
 
 result
 _Array_Pop(
-    array_hnd       hnd_In, 
+    const array_hnd hnd_In, 
     void*           data_Out)
 {
     array* tar = hnd_In - sizeof(array);
@@ -264,7 +268,7 @@ _Array_Pop(
 
 result
 _Array_PopBack(
-    array_hnd       hnd_In, 
+    const array_hnd hnd_In, 
     void*           data_Out)
 {
     array* tar = hnd_In - sizeof(array);
@@ -306,7 +310,7 @@ _Array_Insert(
 
 result
 _Array_Remove(
-    array_hnd       hnd_In,
+    const array_hnd hnd_In,
     uint32          element_In)
 {
     array* tar = hnd_In - sizeof(array);
@@ -324,7 +328,7 @@ _Array_Remove(
 
 result
 _Array_Length(
-    array_hnd       hnd_In,
+    const array_hnd hnd_In,
     uint64*         len_Out)
 {
     array* tar = hnd_In - sizeof(array);
@@ -334,7 +338,7 @@ _Array_Length(
 
 result
 _Array_Size(
-    array_hnd       hnd_In,
+    const array_hnd hnd_In,
     uint64*         size_Out)
 {
     array* tar = hnd_In - sizeof(array);
@@ -344,7 +348,7 @@ _Array_Size(
 
 result
 _Array_Stride(
-    array_hnd       hnd_In,
+    const array_hnd hnd_In,
     uint32*         stride_Out)
 {
     array* tar = hnd_In - sizeof(array);

@@ -1,7 +1,7 @@
-#ifndef MEM_STRING_H
-#define MEM_STRING_H
+#ifndef STRING_H
+#define STRING_H
 
-#if !defined(MEM_TYPES_H)
+#if !defined(MEM_HEADERS_H) || !defined(PLATFORM_H)
     typedef unsigned char       uint8;
 
     typedef unsigned int        int32;
@@ -143,4 +143,4 @@ _String_Concat(
     return (strBack < buffSize_In) ? STRING_SUCCESS : STRING_TRUNCATE;
 };
 
-#endif // MEM_STRING_H
+#endif // STRING_H
